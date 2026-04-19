@@ -2,11 +2,11 @@
   "expo": {
     "name": "Nitraxx Music",
     "slug": "nitraxx-music",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "android": {
       "package": "com.nitraxx.music",
-      "versionCode": 5,
-      "permissions": ["INTERNET"]
+      "versionCode": 6,
+      "permissions": ["INTERNET", "FOREGROUND_SERVICE", "WAKE_LOCK"]
     },
     "extra": {
       "eas": {
