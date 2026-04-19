@@ -13,7 +13,12 @@
     },
     "android": {
       "package": "com.nitraxx.music",
-      "permissions": ["AUDIO_FOCUS", "WAKE_LOCK", "FOREGROUND_SERVICE"],
+      "versionCode": 2,
+      "permissions": [
+        "AUDIO_FOCUS",
+        "WAKE_LOCK",
+        "FOREGROUND_SERVICE"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#000022"
