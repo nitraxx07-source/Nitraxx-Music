@@ -1,12 +1,7 @@
 {
   "name": "nitraxx-music",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "main": "node_modules/expo/AppEntry.js",
-  "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios"
-  },
   "dependencies": {
     "expo": "~50.0.14",
     "expo-av": "~13.10.5",
@@ -23,8 +18,9 @@
     "react-native-slider": "^0.11.0",
     "axios": "^1.6.7",
     "@react-native-async-storage/async-storage": "1.21.0",
+    "react-native-reanimated": "~3.6.2",
+    "expo-blur": "~12.9.2",
     "react": "18.2.0",
     "react-native": "0.73.6"
-  },
-  "private": true
+  }
 }
