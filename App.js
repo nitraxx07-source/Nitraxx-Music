@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Image, TouchableOpacity, TextInput, FlatList, Dimensions, ActivityIndicator, ScrollView, Switch, Animated, Modal, StatusBar } from 'react-native';
+import { StyleSheet, View, Text, Image, TouchableOpacity, TextInput, FlatList, Dimensions, ActivityIndicator, ScrollView, Switch, Animated, Modal, StatusBar, Alert } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Audio } from 'expo-av';
@@ -7,90 +7,64 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { 
   Play, Pause, Search, Library, Download, SkipBack, SkipForward, 
   Heart, Settings, Palette, ChevronRight, Globe, Sliders, 
-  Music2, Check, Zap, Volume2, Layout, Database, History, MoreHorizontal
+  Music2, Zap, Volume2, Layout, Database, History
 } from 'lucide-react-native';
 import axios from 'axios';
 
 const Tab = createBottomTabNavigator();
-const { width, height } = Dimensions.get('window');
-
-// --- MOTOR DE AUDIO GLOBAL ---
+const { width } = Dimensions.get('window');
 let globalSound = new Audio.Sound();
 
-// --- LOGO ANIMADO NITRAXX ---
+// --- LOGO ORIGINAL NITRAXX ---
 const AnimatedLogo = () => {
-  const waveAnim = useRef(new Animated.Value(0)).current;
+  const waveAnim = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(waveAnim, { toValue: 1, duration: 1500, useNativeDriver: true }),
-        Animated.timing(waveAnim, { toValue: 0, duration: 1500, useNativeDriver: true })
+        Animated.timing(waveAnim, { toValue: 1.1, duration: 1000, useNativeDriver: true }),
+        Animated.timing(waveAnim, { toValue: 1, duration: 1000, useNativeDriver: true })
       ])
     ).start();
   }, []);
-  const scale = waveAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.2] });
   return (
-    <Animated.View style={{ transform: [{ scale }] }}>
-      <LinearGradient colors={['#00ffff', '#008b8b']} style={styles.logoCircle}>
-        <Music2 color="black" size={40} />
-      </LinearGradient>
+    <Animated.View style={{ transform: [{ scale: waveAnim }] }}>
+      <Image source={require('./assets/icon.png')} style={styles.logoImg} />
     </Animated.View>
   );
 };
 
-// --- PANTALLA: HOME (CON REPRODUCCIÓN AL CLICK) ---
+// --- PANTALLA: HOME ---
 function HomeScreen({ navigation, route }) {
   const { playTrack } = route.params;
   const [loading, setLoading] = useState(true);
-  useEffect(() => { setTimeout(() => setLoading(false), 2000); }, []);
+  useEffect(() => { setTimeout(() => setLoading(false), 1500); }, []);
 
   const sections = [
     { title: "Quick Picks", data: [
       { id: '5S_6Z_Z3_XI', title: 'Si Antes Te Hubiera Co...', artist: 'KAROL G', img: 'https://i.ytimg.com/vi/5S_6Z_Z3_XI/hqdefault.jpg' },
       { id: 'lFcSrYw-ARY', title: 'Relaxing Music', artist: 'Soothing Sounds', img: 'https://i.ytimg.com/vi/lFcSrYw-ARY/hqdefault.jpg' },
       { id: '6366DxVf-os', title: 'Llévame Contigo', artist: 'Romeo Santos', img: 'https://i.ytimg.com/vi/6366DxVf-os/hqdefault.jpg' }
-    ]},
-    { title: "Morning boost", horizontal: true, data: [
-      { id: 'kJQP7kiw5Fk', title: 'Spanish Pop hits', artist: 'Lola Indigo', img: 'https://i.ytimg.com/vi/kJQP7kiw5Fk/hqdefault.jpg' },
-      { id: '1w7OgIMMRc4', title: 'Feel-Good Classic Rock', artist: 'The Doobie Brothers', img: 'https://i.ytimg.com/vi/1w7OgIMMRc4/hqdefault.jpg' }
     ]}
   ];
 
-  if (loading) return (
-    <View style={styles.loaderContainer}>
-      <AnimatedLogo />
-      <Text style={styles.loadText}>NITRAXX MUSIC PRO</Text>
-    </View>
-  );
+  if (loading) return <View style={styles.loaderContainer}><AnimatedLogo /><Text style={styles.loadText}>NITRAXX MUSIC</Text></View>;
 
   return (
     <LinearGradient colors={['#01161d', '#000']} style={styles.container}>
-      <StatusBar barStyle="light-content" />
-      <View style={styles.header}>
-        <Text style={styles.brandText}>Nitraxx</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('Settings')}><Settings color="white" /></TouchableOpacity>
-      </View>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <View style={styles.header}><Text style={styles.brandText}>Nitraxx</Text><TouchableOpacity onPress={() => navigation.navigate('Settings')}><Settings color="white" /></TouchableOpacity></View>
+      <ScrollView>
         {sections.map(sec => (
-          <View key={sec.title} style={{ marginBottom: 30 }}>
+          <View key={sec.title}>
             <Text style={styles.secTitle}>{sec.title}</Text>
-            <FlatList 
-              horizontal={sec.horizontal}
-              data={sec.data}
-              keyExtractor={item => item.id}
-              renderItem={({item}) => (
-                <TouchableOpacity 
-                  style={sec.horizontal ? styles.cardH : styles.rowV} 
-                  onPress={() => playTrack(item)}
-                >
-                  <Image source={{ uri: item.img }} style={sec.horizontal ? styles.imgCard : styles.imgRow} />
-                  <View style={{ marginLeft: 15, flex: 1 }}>
-                    <Text style={styles.trackText} numberOfLines={1}>{item.title}</Text>
-                    <Text style={styles.artistText}>{item.artist}</Text>
-                  </View>
-                </TouchableOpacity>
-              )}
-            />
+            <FlatList data={sec.data} keyExtractor={item => item.id} renderItem={({item}) => (
+              <TouchableOpacity style={styles.rowV} onPress={() => playTrack(item)}>
+                <Image source={{ uri: item.img }} style={styles.imgRow} />
+                <View style={{ marginLeft: 15, flex: 1 }}>
+                  <Text style={styles.trackText}>{item.title}</Text>
+                  <Text style={styles.artistText}>{item.artist}</Text>
+                </View>
+              </TouchableOpacity>
+            )} />
           </View>
         ))}
       </ScrollView>
@@ -98,76 +72,69 @@ function HomeScreen({ navigation, route }) {
   );
 }
 
-// --- PANTALLA: AJUSTES (ESTILO SPOTIFY COMPLETO) ---
-function SettingsScreen() {
-  const [config, setConfig] = useState({ language: 'Español', quality: '320kbps', eq: 'Normal', dynamic: true });
-  
-  const SettingRow = ({ icon: Icon, title, sub, hasSwitch, value, onPress }) => (
-    <TouchableOpacity style={styles.setRow} onPress={onPress}>
-      <View style={styles.setIconBg}><Icon color="cyan" size={20} /></View>
-      <View style={styles.setInfo}>
-        <Text style={styles.setText}>{title}</Text>
-        {sub && <Text style={styles.subText}>{sub}</Text>}
-      </View>
-      {hasSwitch ? <Switch value={value} onValueChange={onPress} /> : <ChevronRight color="#333" />}
-    </TouchableOpacity>
-  );
+// --- PANTALLA: BUSCADOR (CORREGIDA PARA QUE NO SE CIERRE) ---
+function SearchScreen({ navigation, route }) {
+  const { playTrack } = route.params;
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
 
+  const searchAction = async () => {
+    if (!query) return;
+    setLoading(true);
+    try {
+      const res = await axios.get(`https://pipedapi.kavin.rocks/search?q=${query}&filter=music_songs`);
+      setResults(res.data.items || []);
+    } catch (e) { Alert.alert("Error", "Servidor ocupado, intenta de nuevo."); }
+    setLoading(false);
+  };
+
+  return (
+    <View style={[styles.container, { backgroundColor: '#000' }]}>
+      <View style={styles.searchBox}>
+        <Search color="cyan" size={20} />
+        <TextInput placeholder="Buscar en Nitraxx..." placeholderTextColor="#444" style={styles.input} onChangeText={setQuery} onSubmitEditing={searchAction} />
+      </View>
+      {loading ? <ActivityIndicator color="cyan" size="large" /> : (
+        <FlatList data={results} keyExtractor={(item, index) => index.toString()} renderItem={({item}) => (
+          <TouchableOpacity style={styles.rowV} onPress={() => playTrack({id: item.url.split('=')[1], title: item.title, artist: item.uploaderName, img: item.thumbnail})}>
+            <Image source={{ uri: item.thumbnail }} style={styles.imgRow} />
+            <View style={{ flex: 1, marginLeft: 15 }}><Text style={styles.trackText}>{item.title}</Text></View>
+          </TouchableOpacity>
+        )} />
+      )}
+    </View>
+  );
+}
+
+// --- PANTALLA: AJUSTES ---
+function SettingsScreen() {
   return (
     <LinearGradient colors={['#01161d', '#000']} style={styles.container}>
       <Text style={styles.mainTitle}>Ajustes</Text>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <Text style={styles.groupLabel}>Personalización</Text>
-        <SettingRow icon={Palette} title="Colores Dinámicos" sub="Estilo Harmony" hasSwitch value={config.dynamic} onPress={() => setConfig({...config, dynamic: !config.dynamic})} />
-        <SettingRow icon={Globe} title="Idioma" sub={config.language} />
-        <SettingRow icon={Layout} title="Interfaz del Reproductor" sub="Estándar" />
-
-        <Text style={styles.groupLabel}>Música y Reproducción</Text>
-        <SettingRow icon={Music2} title="Calidad de Audio" sub={config.quality} />
-        <SettingRow icon={Sliders} title="Ecualizador" sub={config.eq} />
-        
-        <Text style={styles.groupLabel}>Descargas y Almacenamiento</Text>
-        <SettingRow icon={Download} title="Ruta de Descarga" sub="/Nitraxx/Music" />
-        <SettingRow icon={Database} title="Uso de Almacenamiento" sub="1.2 GB usados" />
-
-        <Text style={styles.groupLabel}>Otros</Text>
-        <SettingRow icon={History} title="Copia de seguridad" />
+      <ScrollView>
+        <Text style={styles.groupLabel}>Audio</Text>
+        <View style={styles.setRow}><Music2 color="cyan" /><View style={{flex:1, marginLeft:15}}><Text style={styles.setText}>Calidad</Text><Text style={styles.subText}>320kbps</Text></View></View>
+        <View style={styles.setRow}><Sliders color="cyan" /><View style={{flex:1, marginLeft:15}}><Text style={styles.setText}>Ecualizador</Text></View></View>
       </ScrollView>
     </LinearGradient>
   );
 }
 
-// --- MINI REPRODUCTOR GLOBAL ---
-const MiniPlayer = ({ currentTrack, isPlaying, onToggle }) => {
-  if (!currentTrack) return null;
-  return (
-    <TouchableOpacity style={styles.miniPlayer}>
-      <Image source={{ uri: currentTrack.img }} style={styles.miniArt} />
-      <View style={{ flex: 1, marginLeft: 12 }}>
-        <Text style={styles.miniTitle} numberOfLines={1}>{currentTrack.title}</Text>
-        <Text style={styles.miniArtist}>{currentTrack.artist}</Text>
-      </View>
-      <TouchableOpacity onPress={onToggle} style={styles.miniPlayBtn}>
-        {isPlaying ? <Pause color="white" fill="white" size={24} /> : <Play color="white" fill="white" size={24} />}
-      </TouchableOpacity>
-    </TouchableOpacity>
-  );
-};
-
-// --- NAVEGACIÓN PRINCIPAL ---
 export default function App() {
   const [currentTrack, setCurrentTrack] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
   const handlePlay = async (track) => {
     try {
-      await globalSound.unloadAsync();
+      const status = await globalSound.getStatusAsync();
+      if (status.isLoaded) { await globalSound.unloadAsync(); }
       setCurrentTrack(track);
       setIsPlaying(true);
-      // Simulación de carga de stream
-      await globalSound.loadAsync({ uri: `https://www.yt-download.org/api/widget/mp3/${track.id}` });
+      // Motor de audio corregido
+      await globalSound.loadAsync({ uri: `https://convert.best/api/v1/get_audio_url?video_id=${track.id}` }, {}, true);
       await globalSound.playAsync();
-    } catch (e) { console.log("Error al reproducir"); }
+    } catch (e) { Alert.alert("Nitraxx Music", "No se pudo cargar el audio de esta canción."); }
   };
 
   const togglePlay = async () => {
@@ -178,50 +145,43 @@ export default function App() {
 
   return (
     <NavigationContainer>
-      <Tab.Navigator screenOptions={{
-        headerShown: false,
-        tabBarStyle: styles.tabBar,
-        tabBarActiveTintColor: 'cyan',
-      }}>
-        <Tab.Screen 
-          name="Home" 
-          component={HomeScreen} 
-          initialParams={{ playTrack: handlePlay }}
-          options={{ tabBarIcon: ({color}) => <Library color={color} /> }} 
-        />
-        <Tab.Screen name="Search" component={HomeScreen} options={{ tabBarIcon: ({color}) => <Search color={color} /> }} />
+      <Tab.Navigator screenOptions={{ headerShown: false, tabBarStyle: styles.tabBar, tabBarActiveTintColor: 'cyan' }}>
+        <Tab.Screen name="Home" component={HomeScreen} initialParams={{ playTrack: handlePlay }} options={{ tabBarIcon: ({color}) => <Library color={color} /> }} />
+        <Tab.Screen name="Search" component={SearchScreen} initialParams={{ playTrack: handlePlay }} options={{ tabBarIcon: ({color}) => <Search color={color} /> }} />
         <Tab.Screen name="Settings" component={SettingsScreen} options={{ tabBarIcon: ({color}) => <Settings color={color} /> }} />
       </Tab.Navigator>
-      <MiniPlayer currentTrack={currentTrack} isPlaying={isPlaying} onToggle={togglePlay} />
+      {currentTrack && (
+        <TouchableOpacity style={styles.miniPlayer} onPress={togglePlay}>
+          <Image source={{ uri: currentTrack.img }} style={styles.miniArt} />
+          <View style={{flex:1, marginLeft:10}}><Text style={styles.miniTitle}>{currentTrack.title}</Text></View>
+          {isPlaying ? <Pause color="white" fill="white" /> : <Play color="white" fill="white" />}
+        </TouchableOpacity>
+      )}
     </NavigationContainer>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: 20, paddingTop: 50 },
-  loaderContainer: { flex: 1, backgroundColor: '#01161d', justifyContent: 'center', alignItems: 'center' },
-  loadText: { color: 'cyan', marginTop: 20, letterSpacing: 4, fontWeight: 'bold' },
-  logoCircle: { width: 90, height: 90, borderRadius: 45, justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
-  brandText: { color: 'white', fontSize: 32, fontWeight: 'bold' },
-  secTitle: { color: 'white', fontSize: 20, fontWeight: 'bold', marginBottom: 15 },
+  loaderContainer: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
+  loadText: { color: 'cyan', marginTop: 20, fontWeight: 'bold' },
+  logoImg: { width: 120, height: 120, borderRadius: 30 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
+  brandText: { color: 'white', fontSize: 28, fontWeight: 'bold' },
+  secTitle: { color: 'white', fontSize: 18, marginBottom: 15 },
   rowV: { flexDirection: 'row', marginBottom: 15, alignItems: 'center' },
-  imgRow: { width: 55, height: 55, borderRadius: 8 },
-  cardH: { width: 160, marginRight: 20 },
-  imgCard: { width: 160, height: 160, borderRadius: 15 },
-  trackText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  artistText: { color: '#888', fontSize: 13 },
-  mainTitle: { color: 'white', fontSize: 32, fontWeight: 'bold', marginBottom: 25 },
-  groupLabel: { color: 'cyan', fontSize: 12, fontWeight: 'bold', marginTop: 25, marginBottom: 10, textTransform: 'uppercase' },
-  setRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
-  setIconBg: { width: 40, height: 40, borderRadius: 10, backgroundColor: '#02252e', justifyContent: 'center', alignItems: 'center' },
-  setInfo: { flex: 1, marginLeft: 15 },
-  setText: { color: 'white', fontSize: 16 },
-  subText: { color: '#666', fontSize: 12 },
-  tabBar: { backgroundColor: '#000', borderTopWidth: 0, height: 65, paddingBottom: 10 },
-  miniPlayer: { position: 'absolute', bottom: 75, width: '94%', left: '3%', backgroundColor: '#02252e', borderRadius: 15, padding: 10, flexDirection: 'row', alignItems: 'center', elevation: 10 },
-  miniArt: { width: 45, height: 45, borderRadius: 8 },
-  miniTitle: { color: 'white', fontWeight: 'bold' },
-  miniArtist: { color: 'cyan', fontSize: 11 },
-  miniPlayBtn: { padding: 10 }
+  imgRow: { width: 50, height: 50, borderRadius: 5 },
+  trackText: { color: 'white', fontWeight: 'bold' },
+  artistText: { color: '#888', fontSize: 12 },
+  searchBox: { flexDirection: 'row', backgroundColor: '#111', padding: 12, borderRadius: 10, alignItems: 'center', marginBottom: 20 },
+  input: { color: 'white', marginLeft: 10, flex: 1 },
+  tabBar: { backgroundColor: '#000', height: 60 },
+  miniPlayer: { position: 'absolute', bottom: 65, width: '94%', left: '3%', backgroundColor: '#02252e', borderRadius: 12, padding: 8, flexDirection: 'row', alignItems: 'center' },
+  miniArt: { width: 40, height: 40, borderRadius: 5 },
+  miniTitle: { color: 'white', fontSize: 12 },
+  mainTitle: { color: 'white', fontSize: 28, marginBottom: 20 },
+  setRow: { flexDirection: 'row', paddingVertical: 15 },
+  setText: { color: 'white' },
+  subText: { color: '#666', fontSize: 11 },
+  groupLabel: { color: 'cyan', fontSize: 12, marginTop: 20 }
 });
