@@ -3,10 +3,27 @@
     "name": "Nitraxx Music",
     "slug": "nitraxx-music",
     "version": "1.3.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000022"
+    },
     "android": {
       "package": "com.nitraxx.music",
       "versionCode": 4,
-      "permissions": ["AUDIO_FOCUS", "WAKE_LOCK", "FOREGROUND_SERVICE", "WRITE_EXTERNAL_STORAGE"]
+      "permissions": [
+        "AUDIO_FOCUS",
+        "WAKE_LOCK",
+        "FOREGROUND_SERVICE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#000022"
+      }
     },
     "extra": {
       "eas": {
