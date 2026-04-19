@@ -4,17 +4,32 @@
     "slug": "nitraxx-music",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "dark",
-    "backgroundColor": "#000033",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000022"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
     "android": {
-      "package": "com.nitraxx.music",
       "adaptiveIcon": {
-        "backgroundColor": "#000033"
-      }
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#000022"
+      },
+      "package": "com.nitraxx.music"
+    },
+    "web": {
+      "favicon": "./assets/icon.png"
     },
     "extra": {
       "eas": {
-        "projectId": "3b0f5b98-3fb9-459f-832e-70881878b5f3"
+        "projectId": "tu-id-de-proyecto"
       }
     }
   }
