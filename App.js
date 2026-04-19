@@ -1,13 +1,42 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   StyleSheet, Text, View, TextInput, FlatList, 
-  Image, TouchableOpacity, Dimensions, ActivityIndicator, Alert 
+  Dimensions, ActivityIndicator, Alert, Animated, TouchableOpacity 
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as FileSystem from 'expo-file-system';
 
 const { width } = Dimensions.get('window');
+
+// Paleta de colores estilo Harmony (Cian Neón y Azul Oscuro Profundo)
+const COLOR_NEON = '#00ffff'; // Cian Neón
+const COLOR_BG_DARK = ['#000022', '#000011']; // Azul oscuro profundo
+
+// COMPONENTE DEL LOGO PROGRAMADO (Retumbo)
+const LogoRetumbo = ({ text, style }) => {
+  const tiltAnim = useRef(new Animated.Value(0)).current;
+
+  // Efecto de retumbo suave al montar
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(tiltAnim, { toValue: -5, duration: 50, useNativeDriver: true }),
+      Animated.timing(tiltAnim, { toValue: 5, duration: 50, useNativeDriver: true }),
+      Animated.timing(tiltAnim, { toValue: -3, duration: 50, useNativeDriver: true }),
+      Animated.timing(tiltAnim, { toValue: 3, duration: 50, useNativeDriver: true }),
+      Animated.timing(tiltAnim, { toValue: 0, duration: 50, useNativeDriver: true })
+    ]).start();
+  }, [tiltAnim]);
+
+  const rumbleStyle = {
+    transform: [{ translateX: tiltAnim }]
+  };
+
+  return (
+    <Animated.Text style={[styles.logoText, rumbleStyle, style]}>
+      {text}
+    </Animated.Text>
+  );
+};
 
 export default function App() {
   const [search, setSearch] = useState('');
@@ -15,28 +44,34 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [sound, setSound] = useState(null);
   const [currentSong, setCurrentSong] = useState(null);
-  const [bgColors, setBgColors] = useState(['#000033', '#000000']); // Fondo inicial Azul Oscuro
+  const [bgColors, setBgColors] = useState(COLOR_BG_DARK);
 
-  // Paleta de colores estilo Harmony (se activan al cambiar de canción)
-  const colorPalettes = [
-    ['#1a2a6c', '#b21f1f'], ['#000046', '#1cb5e0'], 
-    ['#43cea2', '#185a9d'], ['#833ab4', '#fd1d1d'],
-    ['#0f0c29', '#302b63'], ['#0575E6', '#021B79']
-  ];
+  // Animación para el efecto de onda al presionar
+  const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  // Función de búsqueda unificada (Simula búsqueda en múltiples fuentes)
+  // Función para retumbar el logo al reproducir
+  const rumbleLogo = () => {
+    Animated.sequence([
+      Animated.timing(scaleAnim, { toValue: 1.1, duration: 50, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 0.9, duration: 50, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 1, duration: 50, useNativeDriver: true }),
+    ]).start();
+  };
+
+  // Función de búsqueda unificada (Música)
   async function searchMusic() {
     if (!search.trim()) return;
     setLoading(true);
     try {
-      const response = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(search)}&media=music&limit=30`);
+      // Usamos la API de iTunes como ejemplo de servidor externo
+      const response = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(search)}&media=music&limit=25`);
       const data = await response.json();
       const formatted = data.results.map(item => ({
         id: item.trackId.toString(),
         title: item.trackName,
         artist: item.artistName,
         url: item.previewUrl,
-        image: item.artworkUrl100.replace('100x100', '500x500'), // Alta calidad
+        image: item.artworkUrl100,
       }));
       setSongs(formatted);
     } catch (e) {
@@ -46,66 +81,50 @@ export default function App() {
     }
   }
 
-  // Lógica de Reproducción con Crossfade automático
+  // Reproducción con efecto Harmony (Retumbo y Colores)
   async function playSong(song) {
     if (sound) {
       await sound.unloadAsync();
     }
     
-    // Cambiar color de fondo dinámicamente
-    setBgColors(colorPalettes[Math.floor(Math.random() * colorPalettes.length)]);
+    // Cambiar color de fondo dinámicamente al azar (estilo Harmony)
+    const randomColor = `hsl(${Math.random() * 360}, 100%, 10%)`; // Tono al azar
+    setBgColors([randomColor, '#000000']);
     setCurrentSong(song);
+    
+    // Activar retumbo del logo
+    rumbleLogo();
 
     const { sound: newSound } = await Audio.Sound.createAsync(
       { uri: song.url },
-      { shouldPlay: true, volume: 1.0 }
+      { shouldPlay: true }
     );
-
     setSound(newSound);
-
-    // Simulación de Crossfade al terminar (Funde los últimos segundos)
-    newSound.setOnPlaybackStatusUpdate((status) => {
-      if (status.didJustFinish) {
-        // Aquí podrías llamar a la siguiente canción de la lista
-      }
-    });
-  }
-
-  // Función para Descargar (Calidad de Audio)
-  async function downloadSong(song) {
-    const fileUri = FileSystem.documentDirectory + `${song.title}.mp3`;
-    try {
-      const downloadResumable = FileSystem.createDownloadResumable(song.url, fileUri);
-      const { uri } = await downloadResumable.downloadAsync();
-      Alert.alert("Descarga Completa", `Guardada en alta calidad: ${song.title}`);
-    } catch (e) {
-      Alert.alert("Error", "No se pudo descargar la lista.");
-    }
   }
 
   const renderItem = ({ item }) => (
     <TouchableOpacity style={styles.songCard} onPress={() => playSong(item)}>
-      <Image source={{ uri: item.image }} style={styles.albumArt} />
       <View style={styles.songDetails}>
         <Text style={styles.songTitle} numberOfLines={1}>{item.title}</Text>
         <Text style={styles.songArtist}>{item.artist}</Text>
       </View>
-      <TouchableOpacity onPress={() => downloadSong(item)} style={styles.downloadBtn}>
-        <Text style={{color: '#00ffff'}}>↓</Text>
-      </TouchableOpacity>
+      <Text style={{color: COLOR_NEON, fontSize: 18}}>▶</Text>
     </TouchableOpacity>
   );
 
   return (
     <LinearGradient colors={bgColors} style={styles.container}>
+      {/* SECCIÓN DEL LOGO PROGRAMADO (Retumbo) */}
       <View style={styles.header}>
-        <Text style={styles.logoText}>NITRAXX MUSIC</Text>
-        <Text style={styles.subLogo}>Unificando YouTube & Spotify</Text>
+        <Animated.View style={{transform: [{scale: scaleAnim}]}}>
+          <LogoRetumbo text="NItraxx Music" />
+          <Text style={styles.subLogo}>Unificando YouTube & Spotify</Text>
+        </Animated.View>
       </View>
 
       <TextInput 
         style={styles.searchBar}
-        placeholder="Buscar en todas las librerías..."
+        placeholder="Buscar en YouTube, Spotify..."
         placeholderTextColor="#888"
         value={search}
         onChangeText={setSearch}
@@ -113,13 +132,13 @@ export default function App() {
       />
 
       {loading ? (
-        <ActivityIndicator size="large" color="#00ffff" style={{marginTop: 50}} />
+        <ActivityIndicator size="large" color={COLOR_NEON} style={{marginTop: 50}} />
       ) : (
         <FlatList 
           data={songs}
           keyExtractor={item => item.id}
           renderItem={renderItem}
-          numColumns={width > 600 ? 2 : 1} // 2 columnas para Tablet, 1 para Celular
+          numColumns={width > 600 ? 2 : 1} // Adaptable Tablet o Celular
           contentContainerStyle={{ paddingBottom: 100 }}
         />
       )}
@@ -127,7 +146,6 @@ export default function App() {
       {currentSong && (
         <View style={styles.miniPlayer}>
           <Text style={styles.miniPlayerText}>Reproduciendo: {currentSong.title}</Text>
-          <View style={styles.progressDummy} />
         </View>
       )}
     </LinearGradient>
@@ -135,29 +153,35 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingTop: 50 },
+  container: { flex: 1, paddingTop: 60, backgroundColor: '#000' },
   header: { alignItems: 'center', marginBottom: 20 },
-  logoText: { color: '#00ffff', fontSize: 32, fontWeight: 'bold', letterSpacing: 2 },
-  subLogo: { color: '#fff', fontSize: 10, opacity: 0.6 },
+  logoText: { 
+    color: COLOR_NEON, 
+    fontSize: 34, 
+    fontWeight: 'bold', 
+    textTransform: 'uppercase', // Efecto Harmony
+    letterSpacing: 1,
+    textShadowColor: COLOR_NEON, // EFECTO DE RESPLANDOR NEÓN
+    textShadowOffset: {width: 0, height: 0},
+    textShadowRadius: 10,
+  },
+  subLogo: { color: '#fff', fontSize: 10, opacity: 0.6, textAlign: 'center' },
   searchBar: {
     backgroundColor: 'rgba(255,255,255,0.1)',
-    margin: 15, padding: 15, borderRadius: 30,
-    color: '#fff', fontSize: 16, borderWidth: 1, borderColor: 'rgba(0,255,255,0.3)'
+    margin: 15, padding: 15, borderRadius: 25,
+    color: '#fff', fontSize: 16
   },
   songCard: {
     flex: 1, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.4)',
-    margin: 8, padding: 10, borderRadius: 15, alignItems: 'center'
+    margin: 8, padding: 15, borderRadius: 15, alignItems: 'center'
   },
-  albumArt: { width: 60, height: 60, borderRadius: 10 },
-  songDetails: { flex: 1, marginLeft: 15 },
+  songDetails: { flex: 1, marginLeft: 10 },
   songTitle: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   songArtist: { color: '#aaa', fontSize: 13 },
-  downloadBtn: { padding: 10 },
   miniPlayer: {
     position: 'absolute', bottom: 0, width: '100%',
-    backgroundColor: '#00ffff', padding: 15,
-    borderTopLeftRadius: 20, borderTopRightRadius: 20
+    backgroundColor: COLOR_NEON, padding: 15,
+    borderTopLeftRadius: 15, borderTopRightRadius: 15
   },
-  miniPlayerText: { color: '#000', fontWeight: 'bold', textAlign: 'center' },
-  progressDummy: { height: 3, backgroundColor: '#000', marginTop: 10, width: '40%', borderRadius: 5 }
+  miniPlayerText: { color: '#000', fontWeight: 'bold', textAlign: 'center' }
 });
