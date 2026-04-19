@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
@@ -14,22 +14,16 @@
     "assetBundlePatterns": [
       "**/*"
     ],
-    "ios": {
-      "supportsTablet": true
-    },
     "android": {
+      "package": "com.nitraxx.music",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#000022"
-      },
-      "package": "com.nitraxx.music"
-    },
-    "web": {
-      "favicon": "./assets/icon.png"
+      }
     },
     "extra": {
       "eas": {
-        "projectId": "tu-id-de-proyecto"
+        "projectId": "3b0f5b98-3fb9-459f-832e-70881878b5f3"
       }
     }
   }
