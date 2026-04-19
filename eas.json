@@ -3,11 +3,7 @@
     "preview": {
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "EXPO_PUBLIC_VAR": "valor"
       }
-    },
-    "production": {}
+    }
   }
 }
