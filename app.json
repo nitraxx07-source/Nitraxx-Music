@@ -3,11 +3,21 @@
     "name": "Nitraxx Music",
     "slug": "nitraxx-music",
     "version": "1.6.0",
+    "orientation": "portrait",
     "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#021217",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#021217" 
+      "backgroundColor": "#021217"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.nitraxx.music"
     },
     "android": {
       "package": "com.nitraxx.music",
@@ -21,6 +31,11 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#021217"
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "3b0f5b98-3fb9-459f-832e-70881878b5f3"
       }
     }
   }
