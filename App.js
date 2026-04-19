@@ -1,134 +1,127 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Image, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, View, Text, Image, TouchableOpacity, TextInput, FlatList, Dimensions } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Audio } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Play, SkipForward, SkipBack, ListMusic, Heart, Settings, Download } from 'lucide-react-native';
+import { Play, Pause, Search, Settings, Library, SkipBack, SkipForward, Download, Repeat } from 'lucide-react-native';
 import ImageColors from 'react-native-image-colors';
+import Slider from 'react-native-slider';
 
+const Tab = createBottomTabNavigator();
 const { width } = Dimensions.get('window');
 
-export default function App() {
-  const [sound, setSound] = useState(null);
+// PANTALLA DE REPRODUCTOR (Inspirada en Harmony)
+function PlayerScreen() {
   const [isPlaying, setIsPlaying] = useState(false);
-  const [themeColor, setThemeColor] = useState('#000022'); // Color inicial neón
-  
-  // Simulación de Track (Aquí se integrará el importador de YouTube/Spotify)
-  const currentTrack = {
-    title: "Nitraxx Dynamic Beat",
-    artist: "Nitraxx Master",
-    artwork: "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=800",
-    lyrics: "[00:10.00] Iniciando ritmo neón...\n[00:15.00] Nitraxx Music en el aire\n[00:20.00] Sin anuncios, pura calidad"
+  const [theme, setTheme] = useState(['#1a2a6c', '#000000']);
+  const [position, setPosition] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  const track = {
+    title: "Nitraxx Master Track",
+    artist: "Harmony Logic Engine",
+    artwork: "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=800"
   };
 
-  // EFECTO: Tema Dinámico basado en la imagen
   useEffect(() => {
-    const fetchColors = async () => {
-      const result = await ImageColors.getColors(currentTrack.artwork, {
-        fallback: '#000022',
-        cache: true,
-        key: 'unique_key',
-      });
-      if (result.platform === 'android') {
-        setThemeColor(result.dominant);
-      }
-    };
-    fetchColors();
-  }, [currentTrack.artwork]);
-
-  // FUNCIÓN: Reproducción con soporte para Background y Crossfade
-  async function togglePlayback() {
-    if (sound) {
-      if (isPlaying) {
-        await sound.pauseAsync();
-      } else {
-        await sound.playAsync();
-      }
-      setIsPlaying(!isPlaying);
-    } else {
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: 'URL_DE_STREAMING_AQUÍ' },
-        { shouldPlay: true, volume: 1.0 }
-      );
-      setSound(newSound);
-      setIsPlaying(true);
-      // Configuración para segundo plano
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        staysActiveInBackground: true,
-        playsInSilentModeIOS: true,
-      });
-    }
-  }
+    ImageColors.getColors(track.artwork, { fallback: '#1a2a6c' }).then((colors) => {
+      if (colors.platform === 'android') setTheme([colors.dominant, '#000000']);
+    });
+  }, []);
 
   return (
-    <LinearGradient colors={[themeColor, '#000000']} style={styles.container}>
-      {/* Header - Navegación */}
-      <View style={styles.header}>
-        <Settings color="white" size={28} />
-        <Text style={styles.logoText}>NITRAXX MUSIC</Text>
-        <ListMusic color="white" size={28} />
+    <LinearGradient colors={theme} style={styles.container}>
+      <View style={styles.playerHeader}>
+        <Text style={styles.nowPlaying}>SONANDO AHORA</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Carátula con Efecto Neón */}
-        <View style={[styles.artWrapper, { shadowColor: themeColor }]}>
-          <Image source={{ uri: currentTrack.artwork }} style={styles.albumArt} />
-        </View>
+      <Image source={{ uri: track.artwork }} style={styles.mainArt} />
 
-        {/* Info de Canción */}
-        <View style={styles.trackInfo}>
-          <Text style={styles.trackTitle}>{currentTrack.title}</Text>
-          <Text style={styles.trackArtist}>{currentTrack.artist}</Text>
-        </View>
+      <View style={styles.infoArea}>
+        <Text style={styles.mTitle}>{track.title}</Text>
+        <Text style={styles.mArtist}>{track.artist}</Text>
+      </View>
 
-        {/* Letras Sincronizadas (Placeholder) */}
-        <View style={styles.lyricsBox}>
-          <Text style={styles.lyricsText}>{currentTrack.lyrics}</Text>
+      <View style={styles.progressArea}>
+        <Slider
+          value={position}
+          maximumValue={duration}
+          minimumTrackTintColor="#00ffff"
+          thumbTintColor="#00ffff"
+        />
+        <View style={styles.timeLabels}>
+          <Text style={styles.timeText}>0:00</Text>
+          <Text style={styles.timeText}>3:45</Text>
         </View>
+      </View>
 
-        {/* Controles Principales */}
-        <View style={styles.playerControls}>
-          <SkipBack color="white" size={40} />
-          <TouchableOpacity onPress={togglePlayback} style={styles.mainPlayBtn}>
-            <Play color="black" fill="black" size={35} />
-          </TouchableOpacity>
-          <SkipForward color="white" size={40} />
-        </View>
-
-        {/* Funciones Extra */}
-        <View style={styles.extraFeatures}>
-          <TouchableOpacity style={styles.iconBtn}><Heart color="white" /></TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn}><Download color="white" /></TouchableOpacity>
-          <Text style={styles.featureText}>Calidad: Alta (320kbps)</Text>
-        </View>
-      </ScrollView>
-
-      {/* Barra Inferior Flexible */}
-      <View style={styles.bottomNav}>
-        <Text style={styles.navItem}>Inicio</Text>
-        <Text style={styles.navItem}>Explorar</Text>
-        <Text style={styles.navItem}>Biblioteca</Text>
+      <View style={styles.mainControls}>
+        <Repeat color="white" size={24} />
+        <SkipBack color="white" size={35} fill="white" />
+        <TouchableOpacity style={styles.playCircle} onPress={() => setIsPlaying(!isPlaying)}>
+          {isPlaying ? <Pause color="black" size={30} fill="black" /> : <Play color="black" size={30} fill="black" />}
+        </TouchableOpacity>
+        <SkipForward color="white" size={35} fill="white" />
+        <Download color="white" size={24} />
       </View>
     </LinearGradient>
   );
 }
 
+// PANTALLA DE BÚSQUEDA (Conectada a la idea de Harmony)
+function SearchScreen() {
+  const [query, setQuery] = useState('');
+  return (
+    <View style={[styles.container, { backgroundColor: '#000' }]}>
+      <View style={styles.searchBox}>
+        <Search color="cyan" size={20} />
+        <TextInput
+          placeholder="Buscar en YouTube Music..."
+          placeholderTextColor="#666"
+          style={styles.input}
+          onChangeText={setQuery}
+        />
+      </View>
+      <FlatList
+        data={[]}
+        renderItem={null}
+        ListEmptyComponent={<Text style={styles.emptyText}>Escribe para buscar música sin anuncios...</Text>}
+      />
+    </View>
+  );
+}
+
+export default function App() {
+  return (
+    <NavigationContainer>
+      <Tab.Navigator screenOptions={{
+        headerShown: false,
+        tabBarStyle: { backgroundColor: '#000', borderTopWidth: 0, height: 65 },
+        tabBarActiveTintColor: '#00ffff'
+      }}>
+        <Tab.Screen name="Player" component={PlayerScreen} options={{ tabBarIcon: ({color}) => <Library color={color} /> }} />
+        <Tab.Screen name="Search" component={SearchScreen} options={{ tabBarIcon: ({color}) => <Search color={color} /> }} />
+        <Tab.Screen name="Settings" component={View} options={{ tabBarIcon: ({color}) => <Settings color={color} /> }} />
+      </Tab.Navigator>
+    </NavigationContainer>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 60, alignItems: 'center' },
-  logoText: { color: 'white', fontSize: 20, fontWeight: 'bold', letterSpacing: 2 },
-  scrollContent: { alignItems: 'center', paddingTop: 40 },
-  artWrapper: { width: width * 0.8, height: width * 0.8, borderRadius: 20, elevation: 25, shadowOpacity: 0.8, shadowRadius: 20 },
-  albumArt: { width: '100%', height: '100%', borderRadius: 20 },
-  trackInfo: { marginTop: 30, alignItems: 'center' },
-  trackTitle: { color: 'white', fontSize: 26, fontWeight: 'bold' },
-  trackArtist: { color: '#bbb', fontSize: 18, marginTop: 5 },
-  lyricsBox: { height: 150, width: '90%', marginTop: 30, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 15, padding: 15 },
-  lyricsText: { color: 'white', textAlign: 'center', fontSize: 16, opacity: 0.8, lineHeight: 24 },
-  playerControls: { flexDirection: 'row', alignItems: 'center', marginTop: 40, width: '70%', justifyContent: 'space-between' },
-  mainPlayBtn: { backgroundColor: 'white', padding: 20, borderRadius: 50 },
-  extraFeatures: { flexDirection: 'row', marginTop: 30, alignItems: 'center', width: '90%', justifyContent: 'space-around' },
-  featureText: { color: 'white', opacity: 0.6 },
-  bottomNav: { height: 70, backgroundColor: 'rgba(0,0,0,0.8)', flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
-  navItem: { color: 'white', fontWeight: '500' }
+  container: { flex: 1, paddingHorizontal: 25, paddingTop: 60 },
+  playerHeader: { alignItems: 'center', marginBottom: 30 },
+  nowPlaying: { color: '#00ffff', letterSpacing: 3, fontSize: 12, fontWeight: 'bold' },
+  mainArt: { width: width - 50, height: width - 50, borderRadius: 30, elevation: 20 },
+  infoArea: { marginTop: 35, alignItems: 'flex-start' },
+  mTitle: { color: 'white', fontSize: 28, fontWeight: 'bold' },
+  mArtist: { color: '#00ffff', fontSize: 18, marginTop: 5, opacity: 0.8 },
+  progressArea: { marginTop: 40 },
+  timeLabels: { flexDirection: 'row', justifyContent: 'space-between' },
+  timeText: { color: '#666', fontSize: 12 },
+  mainControls: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 40 },
+  playCircle: { backgroundColor: '#00ffff', padding: 20, borderRadius: 50 },
+  searchBox: { flexDirection: 'row', backgroundColor: '#111', padding: 15, borderRadius: 15, alignItems: 'center' },
+  input: { color: 'white', marginLeft: 15, flex: 1 },
+  emptyText: { color: '#444', textAlign: 'center', marginTop: 100 },
 });
