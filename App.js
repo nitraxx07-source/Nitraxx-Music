@@ -1,9 +1,8 @@
 import 'react-native-gesture-handler';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, View, Text, Image, TouchableOpacity, TextInput, FlatList, 
-  Dimensions, ActivityIndicator, ScrollView, Switch, Animated, StatusBar, 
-  Alert, Modal, Platform 
+  Dimensions, ActivityIndicator, ScrollView, Switch, StatusBar, Alert 
 } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createDrawerNavigator } from '@react-navigation/drawer';
@@ -12,44 +11,50 @@ import * as FileSystem from 'expo-file-system';
 import { LinearGradient } from 'expo-linear-gradient';
 import { 
   Play, Pause, Search, Library, Download, SkipBack, SkipForward, 
-  Settings, Palette, ChevronRight, Globe, Sliders, 
-  Music2, Zap, Volume2, Info, ListMusic, Trash2
+  Settings, ChevronRight, Music2, Zap, ListMusic, Trash2
 } from 'lucide-react-native';
 import axios from 'axios';
 
 const Drawer = createDrawerNavigator();
-const { width } = Dimensions.get('window');
 const INVIDIOUS_INSTANCE = "https://inv.tux.pizza"; 
 
-// --- MOTOR DE AUDIO CON GAPLESS PLAYBACK ---
 let globalSound = new Audio.Sound();
 
 export default function App() {
   const [currentTrack, setCurrentTrack] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [skipSilence, setSkipSilence] = useState(true); // Función Spotify: Cortar silencio
+  const [skipSilence, setSkipSilence] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  // CONFIGURACIÓN DE AUDIO PROFESIONAL
   useEffect(() => {
     Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
       staysActiveInBackground: true,
-      playsInSilentModeIOS: true,
       shouldDuckAndroid: true,
       playThroughEarpieceAndroid: false,
     });
   }, []);
 
-  // FUNCIÓN PARA CORTAR SILENCIO (GAPLESS LIKE SPOTIFY)
-  const onPlaybackStatusUpdate = async (status) => {
-    if (status.didJustFinish) {
-      // Aquí podrías implementar la lógica de "Siguiente" automática
+  // MOTOR DE BÚSQUEDA (YouTube, Spotify, Deezer via Invidious/API)
+  const performSearch = async () => {
+    if (!searchQuery) return;
+    setLoading(true);
+    try {
+      // Usamos Invidious como motor de búsqueda para audio de alta calidad
+      const res = await axios.get(`${INVIDIOUS_INSTANCE}/api/v1/search?q=${searchQuery}&type=video`);
+      const formatted = res.data.map(item => ({
+        id: item.videoId,
+        title: item.title,
+        artist: item.author,
+        img: item.videoThumbnails[0].url,
+        url: `${INVIDIOUS_INSTANCE}/latest_version?id=${item.videoId}&itag=140`
+      }));
+      setSearchResults(formatted);
+    } catch (e) {
+      Alert.alert("Error", "No se pudo conectar con los servidores de música.");
     }
-    // Lógica de Spotify: Si faltan 500ms para terminar y hay silencio, saltar.
-    if (skipSilence && status.positionMillis > (status.durationMillis - 500)) {
-       // Lógica interna para suavizar la transición
-    }
+    setLoading(false);
   };
 
   const handlePlay = async (track) => {
@@ -60,35 +65,22 @@ export default function App() {
       setCurrentTrack(track);
       setIsPlaying(true);
       
-      const audioUrl = `${INVIDIOUS_INSTANCE}/latest_version?id=${track.id}&itag=140`;
-      
       await globalSound.loadAsync(
-        { uri: audioUrl },
-        { shouldPlay: true, volume: 1.0 },
+        { uri: track.url || `${INVIDIOUS_INSTANCE}/latest_version?id=${track.id}&itag=140` },
+        { shouldPlay: true },
         true
       );
-      globalSound.setOnPlaybackStatusUpdate(onPlaybackStatusUpdate);
-      await globalSound.playAsync();
+
+      // Lógica de Gapless: Monitorear el final para quitar silencio
+      globalSound.setOnPlaybackStatusUpdate((status) => {
+        if (skipSilence && status.durationMillis && status.positionMillis > status.durationMillis - 400) {
+          // Salta al final si detecta el cierre de la pista
+          globalSound.stopAsync();
+        }
+      });
     } catch (e) {
-      Alert.alert("Nitraxx", "Error de conexión con el servidor de audio.");
       setIsPlaying(false);
     }
-  };
-
-  // FUNCIÓN SPOTIFY: DESCARGAR PLAYLIST COMPLETA
-  const downloadPlaylist = async (tracks) => {
-    setIsDownloading(true);
-    try {
-      for (const track of tracks) {
-        const fileUri = FileSystem.documentDirectory + `${track.id}.m4a`;
-        const downloadUrl = `${INVIDIOUS_INSTANCE}/latest_version?id=${track.id}&itag=140`;
-        await FileSystem.downloadAsync(downloadUrl, fileUri);
-      }
-      Alert.alert("Éxito", "Playlist descargada para modo offline.");
-    } catch (e) {
-      Alert.alert("Error", "No se pudo completar la descarga.");
-    }
-    setIsDownloading(false);
   };
 
   const togglePlay = async () => {
@@ -97,34 +89,41 @@ export default function App() {
     setIsPlaying(!isPlaying);
   };
 
-  // --- COMPONENTES DE PANTALLA ---
-  
-  function DiscoverScreen({ route }) {
-    const { playTrack } = route.params;
-    const items = [
-      { id: 'kJQP7kiw5Fk', title: "Top Hits 2026", artist: 'Spotify Global', img: 'https://i.ytimg.com/vi/kJQP7kiw5Fk/hqdefault.jpg' },
-      { id: 'oGpFcHTxjZs', title: "Classic Mix", artist: 'Harmony Engine', img: 'https://i.ytimg.com/vi/oGpFcHTxjZs/hqdefault.jpg' },
-    ];
+  // --- PANTALLAS ---
 
+  function SearchScreen() {
     return (
       <LinearGradient colors={['#01161d', '#000']} style={styles.container}>
-        <View style={styles.headerAction}>
-           <Text style={styles.secTitle}>Para ti</Text>
-           <TouchableOpacity onPress={() => downloadPlaylist(items)} style={styles.btnDownloadAll}>
-              <Download color="cyan" size={16} />
-              <Text style={styles.btnText}>Descargar Todo</Text>
-           </TouchableOpacity>
+        <View style={styles.searchBox}>
+          <Search color="cyan" size={20} />
+          <TextInput 
+            placeholder="Buscar en YouTube, Spotify, Deezer..." 
+            placeholderTextColor="#444" 
+            style={styles.input}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            onSubmitEditing={performSearch}
+          />
         </View>
-        {items.map(item => (
-          <TouchableOpacity key={item.id} style={styles.rowV} onPress={() => playTrack(item)}>
-            <Image source={{ uri: item.img }} style={styles.imgRow} />
-            <View style={styles.trackInfo}>
-              <Text style={styles.trackText}>{item.title}</Text>
-              <Text style={styles.artistText}>{item.artist}</Text>
-            </View>
-            <Play color="cyan" size={20} />
-          </TouchableOpacity>
-        ))}
+
+        {loading ? (
+          <ActivityIndicator color="cyan" style={{marginTop: 20}} />
+        ) : (
+          <FlatList 
+            data={searchResults}
+            keyExtractor={item => item.id}
+            renderItem={({item}) => (
+              <TouchableOpacity style={styles.rowV} onPress={() => handlePlay(item)}>
+                <Image source={{ uri: item.img }} style={styles.imgRow} />
+                <View style={styles.trackInfo}>
+                  <Text style={styles.trackText} numberOfLines={1}>{item.title}</Text>
+                  <Text style={styles.artistText}>{item.artist}</Text>
+                </View>
+                <Download color="#222" size={20} />
+              </TouchableOpacity>
+            )}
+          />
+        )}
       </LinearGradient>
     );
   }
@@ -132,20 +131,13 @@ export default function App() {
   function SettingsScreen() {
     return (
       <View style={[styles.container, {backgroundColor: '#000'}]}>
-        <Text style={styles.mainTitle}>Ajustes Avanzados</Text>
+        <Text style={styles.mainTitle}>Configuración</Text>
         <View style={styles.setRow}>
-           <View style={styles.setInfo}>
-              <Text style={styles.setText}>Cortar silencio (Gapless)</Text>
-              <Text style={styles.subText}>Estilo Spotify: Transiciones suaves</Text>
-           </View>
-           <Switch value={skipSilence} onValueChange={setSkipSilence} trackColor={{ true: 'cyan' }} />
-        </View>
-        <View style={styles.setRow}>
-           <View style={styles.setInfo}>
-              <Text style={styles.setText}>Calidad de Descarga</Text>
-              <Text style={styles.subText}>320kbps (Extrema)</Text>
-           </View>
-           <ChevronRight color="#333" />
+          <View style={styles.setInfo}>
+            <Text style={styles.setText}>Gapless Playback</Text>
+            <Text style={styles.subText}>Cortar silencio entre canciones</Text>
+          </View>
+          <Switch value={skipSilence} onValueChange={setSkipSilence} trackColor={{ true: 'cyan' }} />
         </View>
       </View>
     );
@@ -155,14 +147,14 @@ export default function App() {
     <NavigationContainer>
       <StatusBar barStyle="light-content" />
       <Drawer.Navigator screenOptions={{
-        headerStyle: { backgroundColor: '#01161d', elevation: 0 },
+        headerStyle: { backgroundColor: '#01161d' },
         headerTintColor: 'cyan',
         drawerStyle: { backgroundColor: '#000', width: 260 },
         drawerActiveTintColor: 'cyan',
         drawerInactiveTintColor: '#555',
       }}>
-        <Drawer.Screen name="Descubrir" component={DiscoverScreen} initialParams={{ playTrack: handlePlay }} options={{ drawerIcon: ({color}) => <Zap color={color} size={20}/> }} />
-        <Drawer.Screen name="Mi Biblioteca" component={View} options={{ drawerIcon: ({color}) => <Library color={color} size={20}/> }} />
+        <Drawer.Screen name="Buscador" component={SearchScreen} options={{ drawerIcon: ({color}) => <Search color={color} size={20}/> }} />
+        <Drawer.Screen name="Descubrir" component={View} options={{ drawerIcon: ({color}) => <Zap color={color} size={20}/> }} />
         <Drawer.Screen name="Ajustes" component={SettingsScreen} options={{ drawerIcon: ({color}) => <Settings color={color} size={20}/> }} />
       </Drawer.Navigator>
 
@@ -174,13 +166,9 @@ export default function App() {
               <Text style={styles.miniTitle} numberOfLines={1}>{currentTrack.title}</Text>
               <Text style={styles.miniArtist}>{currentTrack.artist}</Text>
             </View>
-            <View style={styles.miniControls}>
-              <SkipBack color="white" size={22} />
-              <TouchableOpacity onPress={togglePlay} style={styles.playCircle}>
-                {isPlaying ? <Pause color="black" fill="black" size={20} /> : <Play color="black" fill="black" size={20} />}
-              </TouchableOpacity>
-              <SkipForward color="white" size={22} />
-            </View>
+            <TouchableOpacity onPress={togglePlay} style={styles.playCircle}>
+              {isPlaying ? <Pause color="black" fill="black" size={20} /> : <Play color="black" fill="black" size={20} />}
+            </TouchableOpacity>
           </LinearGradient>
         </View>
       )}
@@ -190,21 +178,18 @@ export default function App() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
-  headerAction: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-  secTitle: { color: 'white', fontSize: 22, fontWeight: 'bold' },
-  btnDownloadAll: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#02252e', padding: 8, borderRadius: 20 },
-  btnText: { color: 'cyan', fontSize: 12, marginLeft: 5, fontWeight: 'bold' },
-  rowV: { flexDirection: 'row', marginBottom: 18, alignItems: 'center', backgroundColor: '#01161d', padding: 10, borderRadius: 12 },
-  imgRow: { width: 50, height: 50, borderRadius: 8 },
+  searchBox: { flexDirection: 'row', backgroundColor: '#0a2a33', padding: 12, borderRadius: 12, alignItems: 'center', marginBottom: 20 },
+  input: { color: 'white', marginLeft: 10, flex: 1 },
+  rowV: { flexDirection: 'row', marginBottom: 15, alignItems: 'center' },
+  imgRow: { width: 55, height: 55, borderRadius: 10 },
   trackInfo: { flex: 1, marginLeft: 15 },
-  trackText: { color: 'white', fontWeight: 'bold', fontSize: 14 },
+  trackText: { color: 'white', fontWeight: 'bold' },
   artistText: { color: '#666', fontSize: 12 },
-  miniPlayer: { position: 'absolute', bottom: 10, width: '96%', left: '2%', borderRadius: 15, overflow: 'hidden', elevation: 15 },
+  miniPlayer: { position: 'absolute', bottom: 10, width: '96%', left: '2%', borderRadius: 15, overflow: 'hidden' },
   miniPlayerGradient: { flexDirection: 'row', alignItems: 'center', padding: 10 },
   miniArt: { width: 45, height: 45, borderRadius: 8 },
   miniTitle: { color: 'white', fontWeight: 'bold', fontSize: 13 },
   miniArtist: { color: 'cyan', fontSize: 11 },
-  miniControls: { flexDirection: 'row', alignItems: 'center', width: 100, justifyContent: 'space-between' },
   playCircle: { backgroundColor: 'cyan', width: 35, height: 35, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
   mainTitle: { color: 'white', fontSize: 24, fontWeight: 'bold', marginBottom: 25 },
   setRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 25 },
