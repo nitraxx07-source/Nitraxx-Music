@@ -5,7 +5,8 @@
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
-    "ios": "expo start --ios"
+    "ios": "expo start --ios",
+    "web": "expo start --web"
   },
   "dependencies": {
     "expo": "~50.0.14",
@@ -18,10 +19,16 @@
     "react-native-safe-area-context": "4.8.2",
     "react-native-screens": "~3.29.0",
     "@react-navigation/native": "^6.1.9",
+    "@react-navigation/drawer": "^6.6.6",
     "@react-navigation/bottom-tabs": "^6.5.11",
     "expo-linear-gradient": "~12.7.2",
+    "expo-file-system": "~16.0.8",
+    "expo-sqlite": "~13.4.0",
     "lucide-react-native": "^0.344.0",
     "axios": "^1.6.7"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.20.0"
   },
   "private": true
 }
