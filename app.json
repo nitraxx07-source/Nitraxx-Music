@@ -7,21 +7,14 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#021217",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#021217"
-    },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.nitraxx.music"
-    },
     "android": {
-      "package": "com.nitraxx.music",
-      "versionCode": 7,
+      "package": "com.nitraxx.music.player",
+      "versionCode": 8,
+      "permissions": [
+        "INTERNET",
+        "FOREGROUND_SERVICE",
+        "MODIFY_AUDIO_SETTINGS"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#021217"
