@@ -3,30 +3,16 @@
     "name": "Nitraxx Music",
     "slug": "nitraxx-music",
     "version": "1.7.0",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
-    "backgroundColor": "#021217",
+    "android": {
+      "package": "com.nitraxx.music.player",
+      "versionCode": 50,
+      "softwareKeyboardLayoutMode": "pan"
+    },
     "plugins": [
       "expo-av",
       "expo-file-system",
       "expo-sqlite",
-      "expo-linear-gradient",
-      "react-native-gesture-handler"
-    ],
-    "android": {
-      "package": "com.nitraxx.music.player",
-      "versionCode": 45,
-      "softwareKeyboardLayoutMode": "pan",
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
-        "backgroundColor": "#021217"
-      }
-    },
-    "extra": {
-      "eas": {
-        "projectId": "3b0f5b98-3fb9-459f-832e-70881878b5f3"
-      }
-    }
+      "expo-linear-gradient"
+    ]
   }
 }
