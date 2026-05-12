@@ -7,11 +7,6 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#021217",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#021217"
-    },
     "plugins": [
       "expo-av",
       "expo-file-system",
@@ -19,17 +14,7 @@
     ],
     "android": {
       "package": "com.nitraxx.music.player",
-      "versionCode": 12,
-      "softwareKeyboardLayoutMode": "pan",
-      "permissions": [
-        "INTERNET",
-        "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_MEDIA_PLAYBACK",
-        "MODIFY_AUDIO_SETTINGS",
-        "WAKE_LOCK",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
-      ],
+      "versionCode": 13,
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#021217"
