@@ -7,6 +7,11 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#021217",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#021217"
+    },
     "plugins": [
       "expo-av",
       "expo-file-system",
@@ -14,7 +19,8 @@
     ],
     "android": {
       "package": "com.nitraxx.music.player",
-      "versionCode": 18,
+      "versionCode": 19,
+      "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#021217"
