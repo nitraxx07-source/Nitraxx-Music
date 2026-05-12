@@ -18,6 +18,5 @@
     "react-native-reanimated": "~3.6.2",
     "lucide-react-native": "*",
     "axios": "^1.6.7"
-  },
-  "private": true
+  }
 }
