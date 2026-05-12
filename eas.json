@@ -3,12 +3,19 @@
     "preview": {
       "android": {
         "buildType": "apk",
-        "image": "latest"
+        "image": "latest",
+        "env": {
+          "JAVA_VERSION": "17",
+          "NODE_VERSION": "18.18.0"
+        }
       }
     },
     "production": {
       "android": {
-        "image": "latest"
+        "image": "latest",
+        "env": {
+          "JAVA_VERSION": "17"
+        }
       }
     }
   }
