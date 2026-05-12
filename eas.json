@@ -3,9 +3,7 @@
     "preview": {
       "android": {
         "buildType": "apk",
-        "env": {
-          "JAVA_VERSION": "17"
-        }
+        "distribution": "internal"
       }
     }
   }
