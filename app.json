@@ -19,7 +19,7 @@
     ],
     "android": {
       "package": "com.nitraxx.music.player",
-      "versionCode": 9,
+      "versionCode": 10,
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "INTERNET",
