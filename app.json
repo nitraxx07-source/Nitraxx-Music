@@ -19,7 +19,7 @@
     ],
     "android": {
       "package": "com.nitraxx.music.player",
-      "versionCode": 19,
+      "versionCode": 22,
       "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
