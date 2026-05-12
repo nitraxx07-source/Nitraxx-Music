@@ -1,50 +1,37 @@
-# 🎵 Nitraxx Music
+# 🎵 Nitraxx Music Professional
 
 <p align="center">
   <img src="assets/icon.png" width="220" alt="Nitraxx Music Logo">
 </p>
 
-**Nitraxx Music** es una aplicación premium de reproducción musical desarrollada con **React Native** y **Expo**. Está diseñada para ofrecer una experiencia visual inmersiva con efectos de neón y animaciones de "retumbo" dinámico que simulan la potencia de un parlante real.
+**Nitraxx Music** es una aplicación de música de alto rendimiento desarrollada con **React Native** y **Expo**. Combina la potencia visual de los efectos neón con las funcionalidades avanzadas de búsqueda y gestión de archivos de las mejores apps del mercado.
 
 ---
 
-## ✨ Características Principales
+## ✨ Características Premium (v1.7.0)
 
-* **🔊 Efecto de Retumbo:** El logo y la interfaz vibran visualmente al ritmo de la música, emulando un parlante de alta potencia.
-* **🌌 Interfaz Neón:** Diseño optimizado en azul oscuro profundo con detalles en cian neón, inspirado en la estética de Harmony Music.
-* **📱 Multiplataforma:** Interfaz totalmente adaptable y fluida para celulares y tablets.
-* **🔍 Buscador Inteligente:** Conexión unificada para buscar contenido en diversas librerías musicales.
+* **🔍 Motor Multi-Fuente:** Búsqueda integrada en tiempo real compatible con librerías de YouTube Music, Spotify y Deezer.
+* **📥 Download Manager (Estilo Spotify):** Capacidad para descargar playlists completas para escucha offline directamente en el almacenamiento local.
+* **✂️ Gapless Playback:** Tecnología de corte de silencio entre canciones para transiciones fluidas y profesionales.
+* **🔊 Efecto de Retumbo Dinámico:** Interfaz reactiva que vibra visualmente simulando la potencia de un parlante real.
+* **🌌 Interfaz Harmony Dark:** Diseño optimizado en azul profundo y cian neón para una experiencia inmersiva.
 
-## 🚀 Vista Previa del Splash
-Al iniciar la aplicación, se despliega una animación de onda de expansión sobre el fondo oscuro, centrada en nuestro icónico parlante.
+---
 
-<p align="center">
-  <img src="assets/splash.png" width="450" alt="Nitraxx Splash Screen">
-</p>
-
-## 🛠️ Tecnologías Utilizadas
+## 🛠️ Tecnologías y Motores
 
 * **React Native & Expo SDK 50**
-* **Expo AV:** Para el motor de audio.
-* **Animated API:** Para los efectos visuales de vibración.
-* **Lucide React Native:** Iconografía moderna.
-
-## 🔧 Instalación y Desarrollo
-
-1.  **Clonar el repositorio:**
-    ```bash
-    git clone [https://github.com/nitraxx07-source/Nitraxx-Music.git](https://github.com/nitraxx07-source/Nitraxx-Music.git)
-    ```
-2.  **Instalar dependencias:**
-    ```bash
-    npm install
-    ```
-3.  **Iniciar el entorno:**
-    ```bash
-    npx expo start
-    ```
+* **Expo AV:** Motor de audio profesional con soporte de fondo.
+* **Expo File System & SQLite:** Gestión de descargas y base de datos local para la biblioteca.
+* **Axios:** Conexión con APIs de búsqueda de música.
+* **Lucide React Native:** Iconografía moderna y minimalista.
 
 ---
-<p align="center">
-  <i>Desarrollado con pasión tecnológica por <b>Nitraxx07</b></i>
-</p>
+
+## 🔧 Configuración para Desarrolladores
+
+Debido a que esta versión utiliza servicios de primer plano y acceso al sistema de archivos, asegúrate de configurar los permisos en Android:
+
+1. **Clonar el repositorio:**
+   ```bash
+   git clone [https://github.com/nitraxx07-source/Nitraxx-Music.git](https://github.com/nitraxx07-source/Nitraxx-Music.git)
