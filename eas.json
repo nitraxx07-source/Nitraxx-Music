@@ -2,10 +2,7 @@
   "build": {
     "preview": {
       "android": {
-        "buildType": "apk",
-        "env": {
-          "JAVA_VERSION": "17"
-        }
+        "buildType": "apk"
       }
     }
   }
