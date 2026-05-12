@@ -3,10 +3,8 @@
     "preview": {
       "android": {
         "buildType": "apk",
-        "image": "latest",
         "env": {
-          "JAVA_VERSION": "17",
-          "NODE_OPTIONS": "--max-old-space-size=4096"
+          "JAVA_VERSION": "17"
         }
       }
     }
