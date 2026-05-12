@@ -2,7 +2,7 @@
   "expo": {
     "name": "Nitraxx Music",
     "slug": "nitraxx-music",
-    "version": "1.6.0",
+    "version": "1.7.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -13,7 +13,8 @@
       "permissions": [
         "INTERNET",
         "FOREGROUND_SERVICE",
-        "MODIFY_AUDIO_SETTINGS"
+        "MODIFY_AUDIO_SETTINGS",
+        "WAKE_LOCK"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
