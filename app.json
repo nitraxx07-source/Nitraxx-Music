@@ -14,7 +14,7 @@
     ],
     "android": {
       "package": "com.nitraxx.music.player",
-      "versionCode": 14,
+      "versionCode": 15,
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#021217"
