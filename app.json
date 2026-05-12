@@ -5,12 +5,7 @@
     "version": "1.8.0",
     "android": {
       "package": "com.nitraxx.music.player",
-      "versionCode": 65
-    },
-    "extra": {
-      "eas": {
-        "projectId": "3b0f5b98-3fb9-459f-832e-70881878b5f3"
-      }
+      "versionCode": 70
     },
     "plugins": [
       "expo-av",
