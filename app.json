@@ -10,7 +10,6 @@
     "plugins": [
       "expo-av",
       "expo-file-system",
-      "expo-sqlite",
       "expo-linear-gradient",
       "react-native-gesture-handler"
     ]
