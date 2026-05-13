@@ -1,4 +1,5 @@
 import 'react-native-gesture-handler';
+import 'react-native-reanimated'; 
 import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, View, Text, Image, TouchableOpacity, TextInput, FlatList, 
@@ -20,6 +21,25 @@ const INVIDIOUS_INSTANCE = "https://inv.tux.pizza";
 
 let globalSound = new Audio.Sound();
 
+function SettingsScreen({ skipSilence, setSkipSilence }) {
+  return (
+    <View style={[styles.container, {backgroundColor: '#000'}]}>
+      <Text style={styles.mainTitle}>Configuración</Text>
+      <View style={styles.setRow}>
+        <View style={styles.setInfo}>
+          <Text style={styles.setText}>Gapless Playback</Text>
+          <Text style={styles.subText}>Cortar silencio entre canciones</Text>
+        </View>
+        <Switch 
+          value={skipSilence} 
+          onValueChange={setSkipSilence} 
+          trackColor={{ true: 'cyan' }} 
+        />
+      </View>
+    </View>
+  );
+}
+
 export default function App() {
   const [currentTrack, setCurrentTrack] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -36,12 +56,10 @@ export default function App() {
     });
   }, []);
 
-  // MOTOR DE BÚSQUEDA (YouTube, Spotify, Deezer via Invidious/API)
   const performSearch = async () => {
     if (!searchQuery) return;
     setLoading(true);
     try {
-      // Usamos Invidious como motor de búsqueda para audio de alta calidad
       const res = await axios.get(`${INVIDIOUS_INSTANCE}/api/v1/search?q=${searchQuery}&type=video`);
       const formatted = res.data.map(item => ({
         id: item.videoId,
@@ -71,10 +89,8 @@ export default function App() {
         true
       );
 
-      // Lógica de Gapless: Monitorear el final para quitar silencio
       globalSound.setOnPlaybackStatusUpdate((status) => {
         if (skipSilence && status.durationMillis && status.positionMillis > status.durationMillis - 400) {
-          // Salta al final si detecta el cierre de la pista
           globalSound.stopAsync();
         }
       });
@@ -89,15 +105,13 @@ export default function App() {
     setIsPlaying(!isPlaying);
   };
 
-  // --- PANTALLAS ---
-
   function SearchScreen() {
     return (
       <LinearGradient colors={['#01161d', '#000']} style={styles.container}>
         <View style={styles.searchBox}>
           <Search color="cyan" size={20} />
           <TextInput 
-            placeholder="Buscar en YouTube, Spotify, Deezer..." 
+            placeholder="Buscar música..." 
             placeholderTextColor="#444" 
             style={styles.input}
             value={searchQuery}
@@ -128,21 +142,6 @@ export default function App() {
     );
   }
 
-  function SettingsScreen() {
-    return (
-      <View style={[styles.container, {backgroundColor: '#000'}]}>
-        <Text style={styles.mainTitle}>Configuración</Text>
-        <View style={styles.setRow}>
-          <View style={styles.setInfo}>
-            <Text style={styles.setText}>Gapless Playback</Text>
-            <Text style={styles.subText}>Cortar silencio entre canciones</Text>
-          </View>
-          <Switch value={skipSilence} onValueChange={setSkipSilence} trackColor={{ true: 'cyan' }} />
-        </View>
-      </View>
-    );
-  }
-
   return (
     <NavigationContainer>
       <StatusBar barStyle="light-content" />
@@ -155,7 +154,9 @@ export default function App() {
       }}>
         <Drawer.Screen name="Buscador" component={SearchScreen} options={{ drawerIcon: ({color}) => <Search color={color} size={20}/> }} />
         <Drawer.Screen name="Descubrir" component={View} options={{ drawerIcon: ({color}) => <Zap color={color} size={20}/> }} />
-        <Drawer.Screen name="Ajustes" component={SettingsScreen} options={{ drawerIcon: ({color}) => <Settings color={color} size={20}/> }} />
+        <Drawer.Screen name="Ajustes">
+          {props => <SettingsScreen {...props} skipSilence={skipSilence} setSkipSilence={setSkipSilence} />}
+        </Drawer.Screen>
       </Drawer.Navigator>
 
       {currentTrack && (
