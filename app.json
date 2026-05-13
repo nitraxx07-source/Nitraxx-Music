@@ -5,15 +5,37 @@
     "version": "1.8.0",
     "owner": "nitraxx07",
     "sdkVersion": "50.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
     "android": {
       "package": "com.nitraxx.music.player",
-      "versionCode": 70
+      "versionCode": 70,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-av",
       "expo-file-system",
       "expo-linear-gradient",
-      "react-native-gesture-handler"
+      "react-native-gesture-handler",
+      "react-native-reanimated"
     ]
   }
 }
