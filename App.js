@@ -1,3 +1,9 @@
+// Forzar el apagado de las herramientas de desarrollo que fallan
+if (__DEV__) {
+  require("react-native/Libraries/Core/InitializeCore");
+}
+import 'react-native-gesture-handler';
+// ... el resto de tus imports
 /* @expo/expect-error-ignore */
 import { LogBox } from 'react-native';
 LogBox.ignoreAllLogs(); // Esto evita que los avisos de desarrollo bloqueen la pantalla
