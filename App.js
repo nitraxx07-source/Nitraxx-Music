@@ -1,22 +1,15 @@
-// Forzar el apagado de las herramientas de desarrollo que fallan
-if (__DEV__) {
-  require("react-native/Libraries/Core/InitializeCore");
-}
-import 'react-native-gesture-handler';
-// ... el resto de tus imports
-/* @expo/expect-error-ignore */
-import { LogBox } from 'react-native';
-LogBox.ignoreAllLogs(); // Esto evita que los avisos de desarrollo bloqueen la pantalla
-import 'react-native-gesture-handler';
 import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, View, Text, Image, TouchableOpacity, TextInput, FlatList, 
-  ActivityIndicator, Switch, StatusBar, Alert 
+  ActivityIndicator, StatusBar, Alert, LogBox 
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Search, Download, Play, Pause, Settings } from 'lucide-react-native';
+import { Search, Download, Play, Pause } from 'lucide-react-native';
 import axios from 'axios';
+
+// Ignorar advertencias de desarrollo
+LogBox.ignoreAllLogs();
 
 const INVIDIOUS_INSTANCE = "https://inv.tux.pizza"; 
 let globalSound = new Audio.Sound();
@@ -50,7 +43,7 @@ export default function App() {
       }));
       setSearchResults(formatted);
     } catch (e) {
-      Alert.alert("Error", "No se pudo conectar.");
+      Alert.alert("Error", "No se pudo conectar al servidor de música.");
     }
     setLoading(false);
   };
@@ -64,6 +57,7 @@ export default function App() {
       await globalSound.loadAsync({ uri: track.url }, { shouldPlay: true }, true);
     } catch (e) {
       setIsPlaying(false);
+      Alert.alert("Error", "No se pudo reproducir esta pista.");
     }
   };
 
