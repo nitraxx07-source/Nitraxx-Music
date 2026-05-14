@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import 'react-native-reanimated';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component } from 'react'; // Añadimos Component
 import { 
   StyleSheet, View, Text, Image, TouchableOpacity, TextInput, FlatList, 
   ActivityIndicator, Switch, StatusBar, Alert 
@@ -13,6 +13,12 @@ import {
   Play, Pause, Search, Download, Settings, Zap
 } from 'lucide-react-native';
 import axios from 'axios';
+
+// --- SOLUCIÓN AL ERROR TEXTIMPL / CLASS COMPONENTS ---
+// Creamos pequeñas clases para los iconos, así Reanimated no falla
+class SearchIcon extends Component { render() { return <Search color={this.props.color} size={20} /> } }
+class ZapIcon extends Component { render() { return <Zap color={this.props.color} size={20} /> } }
+class SettingsIcon extends Component { render() { return <Settings color={this.props.color} size={20} /> } }
 
 const Drawer = createDrawerNavigator();
 const INVIDIOUS_INSTANCE = "https://inv.tux.pizza"; 
@@ -156,20 +162,20 @@ export default function App() {
           name="Buscador" 
           component={SearchScreen} 
           options={{ 
-            drawerIcon: ({color}) => <View><Search color={color} size={20}/></View> 
+            drawerIcon: ({color}) => <SearchIcon color={color} /> 
           }} 
         />
         <Drawer.Screen 
           name="Descubrir" 
           component={View} 
           options={{ 
-            drawerIcon: ({color}) => <View><Zap color={color} size={20}/></View> 
+            drawerIcon: ({color}) => <ZapIcon color={color} /> 
           }} 
         />
         <Drawer.Screen 
           name="Ajustes"
           options={{ 
-            drawerIcon: ({color}) => <View><Settings color={color} size={20}/></View> 
+            drawerIcon: ({color}) => <SettingsIcon color={color} /> 
           }}
         >
           {props => <SettingsScreen {...props} skipSilence={skipSilence} setSkipSilence={setSkipSilence} />}
