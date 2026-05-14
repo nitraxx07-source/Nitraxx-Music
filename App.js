@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import 'react-native-reanimated';
-import React, { useState, useEffect, Component } from 'react'; // Añadimos Component
+import React, { useState, useEffect, Component } from 'react';
 import { 
   StyleSheet, View, Text, Image, TouchableOpacity, TextInput, FlatList, 
   ActivityIndicator, Switch, StatusBar, Alert 
@@ -14,8 +14,8 @@ import {
 } from 'lucide-react-native';
 import axios from 'axios';
 
-// --- SOLUCIÓN AL ERROR TEXTIMPL / CLASS COMPONENTS ---
-// Creamos pequeñas clases para los iconos, así Reanimated no falla
+// --- TRUCO PARA ELIMINAR LA PANTALLA ROJA (TextImpl) ---
+// Convertimos los iconos en Clases para que Reanimated los acepte
 class SearchIcon extends Component { render() { return <Search color={this.props.color} size={20} /> } }
 class ZapIcon extends Component { render() { return <Zap color={this.props.color} size={20} /> } }
 class SettingsIcon extends Component { render() { return <Settings color={this.props.color} size={20} /> } }
@@ -24,8 +24,6 @@ const Drawer = createDrawerNavigator();
 const INVIDIOUS_INSTANCE = "https://inv.tux.pizza"; 
 
 let globalSound = new Audio.Sound();
-
-// --- COMPONENTES DE PANTALLA ---
 
 function SettingsScreen({ skipSilence, setSkipSilence }) {
   return (
@@ -94,12 +92,6 @@ export default function App() {
         { shouldPlay: true },
         true
       );
-
-      globalSound.setOnPlaybackStatusUpdate((status) => {
-        if (skipSilence && status.durationMillis && status.positionMillis > status.durationMillis - 400) {
-          globalSound.stopAsync();
-        }
-      });
     } catch (e) {
       setIsPlaying(false);
     }
@@ -161,23 +153,14 @@ export default function App() {
         <Drawer.Screen 
           name="Buscador" 
           component={SearchScreen} 
-          options={{ 
-            drawerIcon: ({color}) => <SearchIcon color={color} /> 
-          }} 
+          options={{ drawerIcon: ({color}) => <SearchIcon color={color} /> }} 
         />
         <Drawer.Screen 
           name="Descubrir" 
           component={View} 
-          options={{ 
-            drawerIcon: ({color}) => <ZapIcon color={color} /> 
-          }} 
+          options={{ drawerIcon: ({color}) => <ZapIcon color={color} /> }} 
         />
-        <Drawer.Screen 
-          name="Ajustes"
-          options={{ 
-            drawerIcon: ({color}) => <SettingsIcon color={color} /> 
-          }}
-        >
+        <Drawer.Screen name="Ajustes" options={{ drawerIcon: ({color}) => <SettingsIcon color={color} /> }}>
           {props => <SettingsScreen {...props} skipSilence={skipSilence} setSkipSilence={setSkipSilence} />}
         </Drawer.Screen>
       </Drawer.Navigator>
