@@ -14,8 +14,7 @@ import {
 } from 'lucide-react-native';
 import axios from 'axios';
 
-// --- TRUCO PARA ELIMINAR LA PANTALLA ROJA (TextImpl) ---
-// Convertimos los iconos en Clases para que Reanimated los acepte
+// Componentes de clase para evitar el error TextImpl en los iconos
 class SearchIcon extends Component { render() { return <Search color={this.props.color} size={20} /> } }
 class ZapIcon extends Component { render() { return <Zap color={this.props.color} size={20} /> } }
 class SettingsIcon extends Component { render() { return <Settings color={this.props.color} size={20} /> } }
@@ -34,11 +33,7 @@ function SettingsScreen({ skipSilence, setSkipSilence }) {
           <Text style={styles.setText}>Gapless Playback</Text>
           <Text style={styles.subText}>Cortar silencio entre canciones</Text>
         </View>
-        <Switch 
-          value={skipSilence} 
-          onValueChange={setSkipSilence} 
-          trackColor={{ true: 'cyan' }} 
-        />
+        <Switch value={skipSilence} onValueChange={setSkipSilence} trackColor={{ true: 'cyan' }} />
       </View>
     </View>
   );
@@ -74,7 +69,7 @@ export default function App() {
       }));
       setSearchResults(formatted);
     } catch (e) {
-      Alert.alert("Error", "No se pudo conectar con el servidor.");
+      Alert.alert("Error", "Error de conexión.");
     }
     setLoading(false);
   };
@@ -83,15 +78,9 @@ export default function App() {
     try {
       const status = await globalSound.getStatusAsync();
       if (status.isLoaded) await globalSound.unloadAsync();
-      
       setCurrentTrack(track);
       setIsPlaying(true);
-      
-      await globalSound.loadAsync(
-        { uri: track.url },
-        { shouldPlay: true },
-        true
-      );
+      await globalSound.loadAsync({ uri: track.url }, { shouldPlay: true }, true);
     } catch (e) {
       setIsPlaying(false);
     }
@@ -107,7 +96,7 @@ export default function App() {
     return (
       <LinearGradient colors={['#01161d', '#000']} style={styles.container}>
         <View style={styles.searchBox}>
-          <Search color="cyan" size={20} />
+          <SearchIcon color="cyan" />
           <TextInput 
             placeholder="Buscar música..." 
             placeholderTextColor="#444" 
@@ -117,10 +106,7 @@ export default function App() {
             onSubmitEditing={performSearch}
           />
         </View>
-
-        {loading ? (
-          <ActivityIndicator color="cyan" style={{marginTop: 20}} />
-        ) : (
+        {loading ? <ActivityIndicator color="cyan" /> : (
           <FlatList 
             data={searchResults}
             keyExtractor={item => item.id}
@@ -149,17 +135,12 @@ export default function App() {
         drawerStyle: { backgroundColor: '#000', width: 260 },
         drawerActiveTintColor: 'cyan',
         drawerInactiveTintColor: '#555',
+        // --- ESTO DESACTIVA LA ANIMACIÓN QUE DA ERROR ---
+        useLegacyImplementation: true, 
+        drawerType: 'front'
       }}>
-        <Drawer.Screen 
-          name="Buscador" 
-          component={SearchScreen} 
-          options={{ drawerIcon: ({color}) => <SearchIcon color={color} /> }} 
-        />
-        <Drawer.Screen 
-          name="Descubrir" 
-          component={View} 
-          options={{ drawerIcon: ({color}) => <ZapIcon color={color} /> }} 
-        />
+        <Drawer.Screen name="Buscador" component={SearchScreen} options={{ drawerIcon: ({color}) => <SearchIcon color={color} /> }} />
+        <Drawer.Screen name="Descubrir" component={View} options={{ drawerIcon: ({color}) => <ZapIcon color={color} /> }} />
         <Drawer.Screen name="Ajustes" options={{ drawerIcon: ({color}) => <SettingsIcon color={color} /> }}>
           {props => <SettingsScreen {...props} skipSilence={skipSilence} setSkipSilence={setSkipSilence} />}
         </Drawer.Screen>
