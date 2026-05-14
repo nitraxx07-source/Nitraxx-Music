@@ -129,23 +129,26 @@ export default function App() {
   return (
     <NavigationContainer>
       <StatusBar barStyle="light-content" />
-      <Drawer.Navigator screenOptions={{
-        headerStyle: { backgroundColor: '#01161d' },
-        headerTintColor: 'cyan',
-        drawerStyle: { backgroundColor: '#000', width: 260 },
-        drawerActiveTintColor: 'cyan',
-        drawerInactiveTintColor: '#555',
-        // --- ESTO DESACTIVA LA ANIMACIÓN QUE DA ERROR ---
-        useLegacyImplementation: true, 
-        drawerType: 'front'
-      }}>
-        <Drawer.Screen name="Buscador" component={SearchScreen} options={{ drawerIcon: ({color}) => <SearchIcon color={color} /> }} />
-        <Drawer.Screen name="Descubrir" component={View} options={{ drawerIcon: ({color}) => <ZapIcon color={color} /> }} />
-        <Drawer.Screen name="Ajustes" options={{ drawerIcon: ({color}) => <SettingsIcon color={color} /> }}>
-          {props => <SettingsScreen {...props} skipSilence={skipSilence} setSkipSilence={setSkipSilence} />}
-        </Drawer.Screen>
-      </Drawer.Navigator>
-
+     <Drawer.Navigator screenOptions={{
+  headerStyle: { backgroundColor: '#01161d' },
+  headerTintColor: 'cyan',
+  drawerStyle: { backgroundColor: '#000', width: 260 },
+  drawerActiveTintColor: 'cyan',
+  drawerInactiveTintColor: '#555',
+  // FORZAR MODO COMPATIBILIDAD TOTAL:
+  detachInactiveScreens: false, 
+  drawerType: 'front',
+}}>
+  <Drawer.Screen 
+    name="Buscador" 
+    component={SearchScreen} 
+    options={{ 
+      // Si sigue fallando, comenta la línea de abajo para probar sin iconos
+      drawerIcon: ({color}) => <View><Search color={color} size={20}/></View> 
+    }} 
+  />
+  {/* ... resto de pantallas ... */}
+</Drawer.Navigator>
       {currentTrack && (
         <View style={styles.miniPlayer}>
           <LinearGradient colors={['#02252e', '#01161d']} start={{x:0, y:0}} end={{x:1, y:0}} style={styles.miniPlayerGradient}>
