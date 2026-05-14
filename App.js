@@ -1,3 +1,6 @@
+/* @expo/expect-error-ignore */
+import { LogBox } from 'react-native';
+LogBox.ignoreAllLogs(); // Esto evita que los avisos de desarrollo bloqueen la pantalla
 import 'react-native-gesture-handler';
 import React, { useState, useEffect } from 'react';
 import { 
