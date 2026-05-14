@@ -31,11 +31,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-av",
-      "expo-file-system",
-      "expo-linear-gradient",
-      "react-native-gesture-handler",
-      "react-native-reanimated"
-    ]
+  "expo-av",
+  "expo-linear-gradient"
+]
   }
 }
