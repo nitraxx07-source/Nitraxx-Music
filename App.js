@@ -1,18 +1,16 @@
 import 'react-native-gesture-handler';
-import 'react-native-reanimated'; 
+import 'react-native-reanimated';
 import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, View, Text, Image, TouchableOpacity, TextInput, FlatList, 
-  Dimensions, ActivityIndicator, ScrollView, Switch, StatusBar, Alert 
+  ActivityIndicator, Switch, StatusBar, Alert 
 } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
 import { LinearGradient } from 'expo-linear-gradient';
 import { 
-  Play, Pause, Search, Library, Download, SkipBack, SkipForward, 
-  Settings, ChevronRight, Music2, Zap, ListMusic, Trash2
+  Play, Pause, Search, Download, Settings, Zap
 } from 'lucide-react-native';
 import axios from 'axios';
 
@@ -20,6 +18,8 @@ const Drawer = createDrawerNavigator();
 const INVIDIOUS_INSTANCE = "https://inv.tux.pizza"; 
 
 let globalSound = new Audio.Sound();
+
+// --- COMPONENTES DE PANTALLA ---
 
 function SettingsScreen({ skipSilence, setSkipSilence }) {
   return (
@@ -70,7 +70,7 @@ export default function App() {
       }));
       setSearchResults(formatted);
     } catch (e) {
-      Alert.alert("Error", "No se pudo conectar con los servidores de música.");
+      Alert.alert("Error", "No se pudo conectar con el servidor.");
     }
     setLoading(false);
   };
@@ -84,7 +84,7 @@ export default function App() {
       setIsPlaying(true);
       
       await globalSound.loadAsync(
-        { uri: track.url || `${INVIDIOUS_INSTANCE}/latest_version?id=${track.id}&itag=140` },
+        { uri: track.url },
         { shouldPlay: true },
         true
       );
@@ -152,9 +152,26 @@ export default function App() {
         drawerActiveTintColor: 'cyan',
         drawerInactiveTintColor: '#555',
       }}>
-        <Drawer.Screen name="Buscador" component={SearchScreen} options={{ drawerIcon: ({color}) => <Search color={color} size={20}/> }} />
-        <Drawer.Screen name="Descubrir" component={View} options={{ drawerIcon: ({color}) => <Zap color={color} size={20}/> }} />
-        <Drawer.Screen name="Ajustes">
+        <Drawer.Screen 
+          name="Buscador" 
+          component={SearchScreen} 
+          options={{ 
+            drawerIcon: ({color}) => <View><Search color={color} size={20}/></View> 
+          }} 
+        />
+        <Drawer.Screen 
+          name="Descubrir" 
+          component={View} 
+          options={{ 
+            drawerIcon: ({color}) => <View><Zap color={color} size={20}/></View> 
+          }} 
+        />
+        <Drawer.Screen 
+          name="Ajustes"
+          options={{ 
+            drawerIcon: ({color}) => <View><Settings color={color} size={20}/></View> 
+          }}
+        >
           {props => <SettingsScreen {...props} skipSilence={skipSilence} setSkipSilence={setSkipSilence} />}
         </Drawer.Screen>
       </Drawer.Navigator>
