@@ -25,9 +25,15 @@ export default function App() {
   const [searchFilter, setSearchFilter] = useState('artist'); // 'artist' | 'album' | 'playlist'
   const [currentCollectionSongs, setCurrentCollectionSongs] = useState([]);
   const [trackProgress, setTrackProgress] = useState(35); // Porcentaje de la línea de tiempo (0-100)
+  // --- AÑADE ESTAS LÍNEAS JUSTO AQUÍ ---
+  const [isShuffle, setIsShuffle] = useState(false);
+  const [isRepeat, setIsRepeat] = useState(false);
+  const [favoriteSongs, setFavoriteSongs] = useState([]);
 
   // --- NUEVOS ESTADOS SOLICITADOS ---
-  const [playlists, setPlaylists] = useState([{ id: '1', name: 'Favoritos', songs: [] }]);
+ const [playlists, setPlaylists] = useState([
+  { id: 'fav_list', name: 'Favoritos', songs: [] }
+]);
   const [downloads, setDownloads] = useState({});
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const [songToAdd, setSongToAdd] = useState(null);
@@ -82,10 +88,9 @@ export default function App() {
 
   // Modales de selección para los desplegables
   const [activeModal, setActiveModal] = useState(null);
+  
 
   const sound = useRef(new Audio.Sound());
-
-  
 
   const getRandomColor = () => {
     const colors = ['#BB86FC', '#03DAC6', '#FF0266', '#FFDE03', '#00E5FF', '#76FF03', '#FF9100', '#64FFDA'];
@@ -98,13 +103,78 @@ export default function App() {
     setTimeout(() => setDownloads(prev => ({ ...prev, [id]: 'done' })), 2000);
   };
 
+  const moveSongInPlaylist = (playlistId, songIndex, direction) => {
+    setPlaylists(prevPlaylists => prevPlaylists.map(p => {
+      if (p.id !== playlistId) return p;
+      const newSongs = [...p.songs];
+      const targetIndex = direction === 'up' ? songIndex - 1 : songIndex + 1;
+      if (targetIndex >= 0 && targetIndex < newSongs.length) {
+        const temp = newSongs[songIndex];
+        newSongs[songIndex] = newSongs[targetIndex];
+        newSongs[targetIndex] = temp;
+      }
+      return { ...p, songs: newSongs };
+    }));
+  };
+
+  const removeSongFromPlaylist = (playlistId, songId) => {
+    setPlaylists(prev => prev.map(p => {
+      if (p.id === playlistId) {
+        if (p.id === 'fav_list') {
+          setFavoriteSongs(prevFavs => prevFavs.filter(id => id !== songId));
+        }
+        return { ...p, songs: p.songs.filter(s => s.id !== songId) };
+      }
+      return p;
+    }));
+  };
+  // --- FUNCIÓN PARA DESCARGAR TODO UN ÁLBUM O PLAYLIST ---
+  const downloadFullCollection = (collectionSongs) => {
+    if (!collectionSongs || collectionSongs.length === 0) {
+      Alert.alert("Descarga", "No hay canciones disponibles en esta colección para descargar.");
+      return;
+    }
+
+    Alert.alert(
+      "Descargar Todo", 
+      `¿Deseas descargar las ${collectionSongs.length} canciones de esta lista?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Descargar", 
+          onPress: () => {
+            // Recorre cada canción y le activa el estado de descarga de 2 segundos que ya tienes
+            collectionSongs.forEach(song => {
+              handleDownload(song.id);
+            });
+            Alert.alert("Descarga", "Descargando colección en segundo plano...");
+          }
+        }
+      ]
+    );
+  };
+const downloadPlaylist = (playlist) => {
+  if (!playlist || !playlist.songs || playlist.songs.length === 0) {
+    Alert.alert("Descarga", "Esta playlist no tiene canciones para descargar.");
+    return;
+  }
+  
+  Alert.alert("Descarga", `Iniciando descarga de ${playlist.songs.length} canciones...`);
+  
+  playlist.songs.forEach(song => {
+    handleDownload(song.id);
+  });
+};
   const createPlaylist = () => {
     Alert.prompt("Nueva Playlist", "Nombre de la lista:", (name) => {
       if (name) setPlaylists([...playlists, { id: Date.now().toString(), name, songs: [] }]);
     });
   };
-
-  const addSongToPlaylist = (playlistId) => {
+const addSongToPlaylist = (playlistId) => {
+    // 1. Buscamos la playlist para la alerta
+    const playlist = playlists.find(p => p.id === playlistId);
+    
+    // 2. Modificamos el estado guardando la canción realmente
     const updated = playlists.map(p => {
       if (p.id === playlistId && !p.songs.find(s => s.id === songToAdd.id)) {
         return { ...p, songs: [...p.songs, songToAdd] };
@@ -112,32 +182,56 @@ export default function App() {
       return p;
     });
     setPlaylists(updated);
+
+    // 3. Mostramos el mensaje y cerramos el modal
+    Alert.alert("Playlist", `"${songToAdd?.title}" fue agregada con éxito a ${playlist?.name}`);
     setShowPlaylistModal(false);
+    if (setSongToAdd) setSongToAdd(null); // Limpieza segura si existe el estado
   };
 
-  // --- NUEVO SISTEMA DE REPRODUCCIÓN (TIEMPO Y CAMBIO AUTOMÁTICO) ---
+// --- NUEVO SISTEMA DE REPRODUCCIÓN (TIEMPO Y CAMBIO AUTOMÁTICO CORREGIDO) ---
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
 
   const playTrack = async (track) => {
     try {
-      // 1. Detener y descargar el audio previo si existe usando la referencia (.current)
+      // 1. Detener y descargar el audio previo de forma segura si ya existe
       if (sound.current) {
-        await sound.current.unloadAsync();
+        try {
+          await sound.current.unloadAsync();
+        } catch (e) {
+          // Captura excepciones por si el audio previo ya se había liberado
+        }
       }
 
-      if (!track.url) {
+      if (!track || !track.url) {
         console.warn("Esta canción no tiene un link de reproducción válido.");
         return;
       }
 
-      // 2. Configurar el callback que maneja la barra de tiempo y el final de la pista
+      // Asegurar que si vienes del buscador global, la colección activa tenga las canciones para cambiar de pista
+      if (!currentCollectionSongs || currentCollectionSongs.length === 0) {
+        setCurrentCollectionSongs(songs);
+      }
+
+      // 2. Crear y cargar la NUEVA instancia de sonido directamente en la referencia
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: track.url },
+        { shouldPlay: true }
+      );
+
+      sound.current = newSound;
+
+      // 3. Sincronizar el estado visual de manera inmediata para pintar el mini-reproductor
+      setCurrentSong(track); 
+      setIsPlaying(true);
+
+      // 4. Configurar el callback de actualización una vez que el objeto ya está inicializado y cargado
       sound.current.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded) {
           setPosition(status.positionMillis);
-          setDuration(status.durationMillis);
+          setDuration(status.durationMillis || 1);
 
-          // Si el porcentaje es dinámico (0-100) en tu interfaz, actualizamos trackProgress
           if (status.durationMillis > 0) {
             const progressPercent = (status.positionMillis / status.durationMillis) * 100;
             setTrackProgress(progressPercent);
@@ -150,23 +244,72 @@ export default function App() {
         }
       });
 
-      // 3. Cargar y reproducir la nueva canción
-      await sound.current.loadAsync({ uri: track.url }, { shouldPlay: true });
-      setCurrentSong(track); // Sincroniza con el reproductor de tu interfaz
-      setIsPlaying(true);
     } catch (error) {
       console.error("Error al reproducir audio:", error);
     }
   };
 
-const handleNextTrack = () => {
-    if (!currentCollectionSongs || currentCollectionSongs.length === 0 || !currentSong) return;
-    const currentIndex = currentCollectionSongs.findIndex(s => s.id === currentSong.id);
-    const nextIndex = (currentIndex + 1) % currentCollectionSongs.length;
-    const nextTrack = currentCollectionSongs[nextIndex];
-    if (nextTrack) {
-      playTrack(nextTrack);
+ // --- CONTROL DE FAVORITOS ---
+ const toggleFavorite = (track) => {
+  if (!track) return;
+
+  const isAlreadyFav = favoriteSongs.includes(track.id);
+  let updatedFavoritesIds;
+
+  if (isAlreadyFav) {
+    // Quitar de favoritos
+    updatedFavoritesIds = favoriteSongs.filter(id => id !== track.id);
+    
+    // Remover físicamente de la playlist "Favoritos"
+    setPlaylists(prev => prev.map(p => {
+      if (p.id === 'fav_list') {
+        return { ...p, songs: p.songs.filter(s => s.id !== track.id) };
+      }
+      return p;
+    }));
+    Alert.alert("Favoritos", `"${track.title}" eliminada de tus Favoritos`);
+  } else {
+    // Añadir a favoritos
+    updatedFavoritesIds = [...favoriteSongs, track.id];
+    
+    // Agregar físicamente a la playlist "Favoritos"
+    setPlaylists(prev => prev.map(p => {
+      if (p.id === 'fav_list') {
+        const alreadyIn = p.songs.some(s => s.id === track.id);
+        return { ...p, songs: alreadyIn ? p.songs : [...p.songs, track] };
+      }
+      return p;
+    }));
+    Alert.alert("Favoritos", `"${track.title}" añadida a tu playlist de Favoritos`);
+  }
+
+  setFavoriteSongs(updatedFavoritesIds);
+};
+  // --- CONTROLADOR DE SIGUIENTE PISTA (CON SHUFFLE Y REPEAT) ---
+  const handleNextTrack = () => {
+    if (!songs || songs.length === 0 || !currentSong) return;
+    
+    if (isRepeat) {
+      // Si está activo repetir, vuelve a reproducir la misma canción
+      playTrack(currentSong);
+      return;
     }
+
+    if (isShuffle) {
+      // Elige una canción al azar de la lista actual
+      const randomIndex = Math.floor(Math.random() * songs.length);
+      playTrack(songs[randomIndex]);
+    } else {
+      // Secuencia normal
+      const currentIndex = songs.findIndex(s => s.id === currentSong.id);
+      const nextIndex = (currentIndex + 1) % songs.length;
+      playTrack(songs[nextIndex]);
+    }
+  };
+   // --- BOTÓN PARA PREPARAR LA ADICIÓN A UNA PLAYLIST ---
+  const openAddToPlaylistModal = (track) => {
+    setSongToAdd(track); // Asigna la canción seleccionada [cite: 10]
+    setShowPlaylistModal(true); // Muestra el modal de listas [cite: 10]
   };
 
   // --- VINCULACIÓN DE COLECCIONES ---
@@ -185,37 +328,41 @@ const handleNextTrack = () => {
     setSongs(collectionTracks); 
   };
 
-// --- PERFIL DE ARTISTA (ITUNES) ---
-async function goToArtistProfile(artistName) {
-  if (!artistName) return;
-  setCurrentArtist(artistName);
-  setAccentColor(getRandomColor());
-  setView('artist_profile');
-  try {
-    const respSongs = await fetch(`https://itunes.apple.com/search?term=${artistName}&entity=song&limit=20`);
-    const dataSongs = await respSongs.json();
-    const respAlb = await fetch(`https://itunes.apple.com/search?term=${artistName}&entity=album&limit=10`);
-    const dataAlb = await respAlb.json();
+  // --- PERFIL DE ARTISTA (ITUNES) ---
+  async function goToArtistProfile(artistName) {
+    if (!artistName) return;
+    setCurrentArtist(artistName);
+    setAccentColor(getRandomColor());
+    setView('artist_profile');
+    try {
+      const respSongs = await fetch(`https://itunes.apple.com/search?term=${artistName}&entity=song&limit=20`);
+      const dataSongs = await respSongs.json();
+      const respAlb = await fetch(`https://itunes.apple.com/search?term=${artistName}&entity=album&limit=10`);
+      const dataAlb = await respAlb.json();
 
-    setSongs(dataSongs.results.map(s => ({
-      id: s.trackId.toString(),
-      title: s.trackName,
-      artist: s.artistName,
-      image: s.artworkUrl100.replace('100x100', '1000x1000'),
-      url: s.previewUrl
-    })));
+      const mappedSongs = dataSongs.results.map(s => ({
+        id: s.trackId.toString(),
+        title: s.trackName,
+        artist: s.artistName,
+        image: s.artworkUrl100.replace('100x100', '1000x1000'),
+        url: s.previewUrl
+      }));
 
-    setArtistAlbums(dataAlb.results.map(a => ({
-      id: a.collectionId.toString(),
-      name: a.collectionName,
-      image: a.artworkUrl100.replace('100x100', '600x600'),
-      year: new Date(a.releaseDate).getFullYear()
-    })));
-  } catch (e) { 
-    console.error(e); 
+      setCurrentCollectionSongs(mappedSongs); // Fijamos la colección activa al entrar al perfil
+      setSongs(mappedSongs);
+
+      setArtistAlbums(dataAlb.results.map(a => ({
+        id: a.collectionId.toString(),
+        name: a.collectionName,
+        image: a.artworkUrl100.replace('100x100', '600x600'),
+        year: new Date(a.releaseDate).getFullYear()
+      })));
+    } catch (e) { 
+      console.error(e); 
+    }
   }
-}
-async function handleSearch() {
+
+  async function handleSearch() {
     if (!query) return;
     setView('results');
     try {
@@ -224,13 +371,16 @@ async function handleSearch() {
       const respAlb = await fetch(`https://itunes.apple.com/search?term=${query}&entity=album&limit=10`);
       const dataAlb = await respAlb.json();
 
-      setSongs(dataSongs.results.map(s => ({
+      const mappedSongs = dataSongs.results.map(s => ({
         id: s.trackId.toString(),
         title: s.trackName,
         artist: s.artistName,
         image: s.artworkUrl100.replace('100x100', '600x600'),
         url: s.previewUrl
-      })));
+      }));
+
+      setCurrentCollectionSongs(mappedSongs); // Sincroniza la colección del buscador principal
+      setSongs(mappedSongs);
 
       setArtistAlbums(dataAlb.results.map(a => ({
         id: a.collectionId.toString(),
@@ -242,6 +392,7 @@ async function handleSearch() {
       console.error("Error buscando:", e); 
     }
   }
+
   // --- FORMATEADOR DE TIEMPO Y AVANCE ---
   const formatTime = (millis) => {
     if (!millis || isNaN(millis)) return "0:00";
@@ -261,42 +412,45 @@ async function handleSearch() {
       console.error("Error al mover la línea de tiempo:", e);
     }
   };
-// --- CONTROLADORES DE REPRODUCCIÓN UNIFICADOS ---
+
+  // --- CONTROLADORES DE REPRODUCCIÓN UNIFICADOS ---
   async function loadAndPlay(item) {
     if (!item) return;
-    // Llamamos directamente a playTrack que ya tiene el listener de tiempo y cambio automático configurado
     await playTrack(item);
     setAccentColor(getRandomColor());
   }
 
   async function togglePlay(item) {
-    // Si no hay nada reproduciéndose y pasan un item, o es una canción diferente
+    if (!item) return;
+
     if (!currentSong || currentSong.id !== item.id) {
       await loadAndPlay(item);
       return;
     }
 
-    // Si es la misma canción, pausamos o reanudamos
     try {
-      if (isPlaying) {
-        await sound.current.pauseAsync();
-        setIsPlaying(false);
-      } else {
-        await sound.current.playAsync();
-        setIsPlaying(true);
+      if (sound.current) {
+        if (isPlaying) {
+          await sound.current.pauseAsync();
+          setIsPlaying(false);
+        } else {
+          await sound.current.playAsync();
+          setIsPlaying(true);
+        }
       }
     } catch (e) {
       console.error("Error en togglePlay:", e);
     }
   }
   
-const handlePrevTrack = () => {
-    if (!currentCollectionSongs || currentCollectionSongs.length === 0 || !currentSong) return;
+  const handlePrevTrack = () => {
+    const activeList = (currentCollectionSongs && currentCollectionSongs.length > 0) ? currentCollectionSongs : songs;
+    
+    if (!activeList || activeList.length === 0 || !currentSong) return;
 
-    // Aquí decía songs.findIndex, cámbialo a currentCollectionSongs:
-    const currentIndex = currentCollectionSongs.findIndex(s => s.id === currentSong.id);
-    const prevIndex = (currentIndex - 1 + currentCollectionSongs.length) % currentCollectionSongs.length;
-    const prevTrack = currentCollectionSongs[prevIndex];
+    const currentIndex = activeList.findIndex(s => s.id === currentSong.id);
+    const prevIndex = (currentIndex - 1 + activeList.length) % activeList.length;
+    const prevTrack = activeList[prevIndex];
 
     if (prevTrack) {
       loadAndPlay(prevTrack);
@@ -327,6 +481,7 @@ const handlePrevTrack = () => {
       )
     );
     return (
+      
       <View style={{ flex: 1, paddingBottom: 100 }}>
         <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 40, marginBottom: 20}}>
           <TouchableOpacity onPress={() => setTab('home')} style={{marginRight: 15}}>
@@ -425,7 +580,7 @@ return (
             <TouchableOpacity style={styles.verticalNavButton} onPress={() => setTab('library')}>
               <Text style={[styles.verticalText, tab === 'library' && styles.verticalTextActive]}>Listas de reproducción</Text>
             </TouchableOpacity>
-
+            
             <TouchableOpacity style={styles.verticalNavButton} onPress={() => { setView('results'); setTab('albums'); }}>
               <Text style={[styles.verticalText, tab === 'albums' && styles.verticalTextActive]}>Álbumes</Text>
             </TouchableOpacity>
@@ -442,8 +597,14 @@ return (
 
         {/* ================= CONTENIDO DE LA PANTALLA (DERECHA) ================= */}
         <View style={styles.rightContentContainer}>
-          <ScrollView showsVerticalScrollIndicator={false} style={{ paddingHorizontal: 15, flex: 1 }}>
-            {tab === 'settings' ? renderSettingsView() : tab === 'library' ? (
+          <ScrollView 
+    showsVerticalScrollIndicator={false} 
+    style={{ flex: 1 }}
+    contentContainerStyle={{ paddingBottom: currentSong ? 120 : 30 }}
+  >
+            {tab === 'settings' ? (
+              renderSettingsView()
+            ) : tab === 'library' ? (
               <View style={{ padding: 10, paddingTop: 60 }}>
                 <Text style={styles.artistNameBig}>Biblioteca</Text>
                 <Text style={{ color: '#666', marginTop: 20, fontSize: 16 }}>Tus playlists y canciones guardadas aparecerán aquí.</Text>
@@ -459,65 +620,97 @@ return (
 
                 {/* ================= VISTA ESTILO SPOTIFY: PERFIL / PLAYLIST / ÁLBUM ================= */}
                 {view === 'artist_profile' && (
-                  <View style={{paddingTop: 50, paddingHorizontal: 10, marginBottom: 20}}>
-                    <TouchableOpacity style={{marginBottom: 15, backgroundColor: '#1c1c1e', width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center'}} onPress={() => { setView('results'); }}>
-                      <ArrowLeft color="white" size={24} />
-                    </TouchableOpacity>
-                    
-                    <Text style={[styles.artistNameBig, {fontSize: 26, marginBottom: 5}]}>{currentArtist}</Text>
-                    <View style={[styles.verifiedContainer, {marginBottom: 15}]}>
-                      <Disc color={accentColor} size={16} />
-                      <Text style={styles.verifiedText}> Contenido Sincronizado</Text>
-                    </View>
+  <View style={{paddingTop: 50, paddingHorizontal: 10, marginBottom: 20}}>
+    <TouchableOpacity style={{marginBottom: 15, backgroundColor: '#1c1c1e', width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center'}} onPress={() => setView('results')}>
+      <ArrowLeft color="white" size={24} />
+    </TouchableOpacity>
+    
+    {/* Contenedor horizontal para el título y el botón Descargar Todo */}
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+      <Text style={[styles.artistNameBig, {fontSize: 26, marginBottom: 0, flex: 1, marginRight: 10}]}>{currentArtist}</Text>
 
-                    <View style={{flexDirection: 'row', alignItems: 'center', gap: 15, marginBottom: 20}}>
-                      <TouchableOpacity 
-                        style={{backgroundColor: accentColor, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 25}} 
-                        onPress={() => {
-                          if (currentCollectionSongs.length > 0) togglePlay(currentCollectionSongs[0]);
-                        }}
-                      >
-                        <Text style={{color: 'black', fontWeight: 'bold', fontSize: 15}}>REPRODUCIR TODO</Text>
-                      </TouchableOpacity>
-                    </View>
+      {/* ====== BOTÓN INTEGRADO: DESCARGAR TODO EL ÁLBUM/PLAYLIST ====== */}
+      <TouchableOpacity 
+        style={{ 
+          flexDirection: 'row', 
+          backgroundColor: '#161616', 
+          paddingHorizontal: 14, 
+          paddingVertical: 8, 
+          borderRadius: 20, 
+          alignItems: 'center',
+          gap: 6,
+          borderWidth: 0.5,
+          borderColor: '#333'
+        }}
+        onPress={() => downloadFullCollection(currentCollectionSongs)}
+      >
+        <Download color={accentColor} size={16} />
+        <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>Descargar Todo</Text>
+      </TouchableOpacity>
+      {/* =============================================================== */}
+    </View>
 
-                    {/* NUEVO/RESTAURADO: Discografía horizontal interna si estamos viendo el perfil de un artista */}
-                    {artistAlbums.length > 0 && !currentArtist.includes('Álbum:') && !currentArtist.includes('Playlist:') && (
-                      <View style={{marginBottom: 20}}>
-                        <Text style={[styles.sectionTitle, {marginBottom: 10}]}>Álbumes y Lanzamientos</Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                          {artistAlbums.map((album) => (
-                            <TouchableOpacity key={album.id} style={styles.albumCard} onPress={() => goToCollection(album.name, 'Álbum')}>
-                              <Image source={{uri: album.image}} style={styles.albumArt} />
-                              <Text style={styles.albumName} numberOfLines={1}>{album.name}</Text>
-                              <Text style={styles.albumYear}>{album.year}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </ScrollView>
-                      </View>
-                    )}
+    <View style={[styles.verifiedContainer, {marginBottom: 15}]}>
+      <Disc color={accentColor} size={16} />
+      <Text style={styles.verifiedText}> Contenido Sincronizado • {currentCollectionSongs.length} temas</Text>
+    </View>
 
-                    {/* Listado de tracks principales del contenedor actual */}
-                    <Text style={styles.sectionTitle}>Canciones</Text>
-                    {currentCollectionSongs.map((item, index) => (
-                      <TouchableOpacity key={item.id} style={styles.songRow} onPress={() => togglePlay(item)}>
-                        <Text style={styles.songIndex}>{index + 1}</Text>
-                        <Image source={{uri: item.image}} style={styles.songArt} />
-                        <View style={{flex: 1, marginLeft: 15}}>
-                          <Text style={[styles.songTitle, {color: currentSong?.id === item.id ? accentColor : 'white'}]} numberOfLines={1}>{item.title}</Text>
-                          {/* Evento onPress restaurado para brincar a otro artista si se desea */}
-                          <TouchableOpacity onPress={() => goToArtistProfile(item.artist)}>
-                            <Text style={styles.songArtist}>{item.artist}</Text>
-                          </TouchableOpacity>
-                        </View>
-                        <View style={{flexDirection: 'row', alignItems: 'center', gap: 14, marginRight: 5}}>
-                          <TouchableOpacity onPress={() => Alert.alert("Descarga", `Descargando...`)}><Download color="#777" size={18} /></TouchableOpacity>
-                          <TouchableOpacity onPress={() => Alert.alert("Favoritos", `Añadido`)}><Heart color="#777" size={18} /></TouchableOpacity>
-                        </View>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
+    <View style={{ flexDirection: 'row', gap: 10, marginVertical: 10, paddingHorizontal: 10 }}>
+      <TouchableOpacity 
+        style={[styles.chip, searchFilter === 'artist' && { backgroundColor: accentColor }]} 
+        onPress={() => setSearchFilter('artist')}
+      >
+        <Text style={[styles.chipText, searchFilter === 'artist' && { color: '#000' }]}>Artistas</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity 
+        style={[styles.chip, searchFilter === 'album' && { backgroundColor: accentColor }]} 
+        onPress={() => setSearchFilter('album')}
+      >
+        <Text style={[styles.chipText, searchFilter === 'album' && { color: '#000' }]}>Álbumes</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity 
+        style={[styles.chip, searchFilter === 'playlist' && { backgroundColor: accentColor }]} 
+        onPress={() => setSearchFilter('playlist')}
+      >
+        <Text style={[styles.chipText, searchFilter === 'playlist' && { color: '#000' }]}>Playlists</Text>
+      </TouchableOpacity>
+    </View>
+
+    <Text style={styles.sectionTitle}>Canciones</Text>
+    {currentCollectionSongs.map((item, index) => {
+      // Validaciones visuales en tiempo real para descargas y favoritos
+      const isDownloaded = downloads[item.id] === 'completed';
+      const isFav = favoriteSongs.includes(item.id);
+
+      return (
+        <TouchableOpacity key={item.id} style={styles.songRow} onPress={() => togglePlay(item)}>
+          <Text style={styles.songIndex}>{index + 1}</Text>
+          <Image source={{uri: item.image}} style={styles.songArt} />
+          
+          <View style={{flex: 1, marginLeft: 15}}>
+            <Text style={[styles.songTitle, {color: currentSong?.id === item.id ? accentColor : 'white'}]} numberOfLines={1}>{item.title}</Text>
+            <TouchableOpacity onPress={() => goToArtistProfile(item.artist)}>
+              <Text style={styles.songArtist}>{item.artist}</Text>
+            </TouchableOpacity>
+          </View>
+          
+          {/* Botones de acción de la canción conectados a tus funciones reales */}
+          <View style={{flexDirection: 'row', alignItems: 'center', gap: 14, marginRight: 5}}>
+            <TouchableOpacity onPress={() => handleDownload(item.id)}>
+              <Download color={isDownloaded ? accentColor : "#777"} size={18} />
+            </TouchableOpacity>
+            
+            <TouchableOpacity onPress={() => toggleFavorite(item)}>
+              <Heart color={isFav ? accentColor : "#777"} fill={isFav ? accentColor : "transparent"} size={18} />
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      );
+    })}
+  </View>
+)}
 
                 {/* BARRA DE BÚSQUEDA AVANZADA CON SELECTORES */}
                 {view === 'results' && (
@@ -557,7 +750,7 @@ return (
                     </View>
                   </View>
                 )}
-
+            
                 {/* RESPUESTA DE BÚSQUEDAS EN MÓDULO PRINCIPAL */}
                 {view === 'results' && (songs.length > 0 || artistAlbums.length > 0) ? (
                   <View style={{marginTop: 10}}>
@@ -580,12 +773,18 @@ return (
                       <View>
                         <Text style={[styles.sectionTitle, {marginLeft: 10}]}>Canciones Encontradas</Text>
                         {songs.map((item, index) => (
-                          <TouchableOpacity key={item.id} style={styles.songRow} onPress={() => togglePlay(item)}>
+                          <TouchableOpacity 
+                            key={item.id} 
+                            style={styles.songRow} 
+                            onPress={() => {
+                              setCurrentCollectionSongs(songs); // Mantiene la cola de reproducción actualizada
+                              togglePlay(item);
+                            }}
+                          >
                             <Text style={styles.songIndex}>{index + 1}</Text>
                             <Image source={{uri: item.image}} style={styles.songArt} />
                             <View style={{flex: 1, marginLeft: 15}}>
                               <Text style={[styles.songTitle, {color: currentSong?.id === item.id ? accentColor : 'white'}]} numberOfLines={1}>{item.title}</Text>
-                              {/* Restaurado aquí también */}
                               <TouchableOpacity onPress={() => goToArtistProfile(item.artist)}>
                                 <Text style={styles.songArtist}>{item.artist}</Text>
                               </TouchableOpacity>
@@ -599,9 +798,9 @@ return (
                       </View>
                     )}
                   </View>
-) : (
+                ) : (
                   /* RECOMENDACIONES POR DEFECTO DEL HOME */
-                  view === 'results' && songs.length === 0 && artistAlbums.length === 0 && (
+                  view === 'results' && (
                     <View>
                       <Text style={[styles.sectionTitle, { marginLeft: 10, marginTop: 10 }]}>Selecciones rápidas</Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingLeft: 10, marginBottom: 20 }}>
@@ -641,43 +840,62 @@ return (
         </View>
       </View>
 
-      {/* ================= MODAL DEL REPRODUCTOR GRANDE CON LÍNEA DE TIEMPO ================= */}
+      {/* ================= MODAL DEL REPRODUCTOR GRANDE (COMPLETAMENTE INDEPENDIENTE) ================= */}
       <Modal visible={showFullPoster} animationType="slide">
         <View style={styles.posterContainer}>
           <LinearGradient colors={[accentColor + '55', '#000']} style={StyleSheet.absoluteFill} />
+          
+          {/* BOTÓN DE LA FLECHITA ATRÁS - CORREGIDA POSICIÓN ABSOLUTA */}
           <TouchableOpacity style={styles.closeBtn} onPress={() => setShowFullPoster(false)}>
-            <ChevronDown color="white" size={40} />
+            <ArrowLeft color="white" size={32} />
           </TouchableOpacity>
           
           <Image source={{ uri: currentSong?.image }} style={styles.bigArt} />
           
           <View style={styles.posterMeta}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.posterTitle} numberOfLines={1}>{currentSong?.title}</Text>
-              <TouchableOpacity onPress={() => { setShowFullPoster(false); goToArtistProfile(currentSong?.artist); }}>
-                <Text style={[styles.posterArtist, {color: accentColor}]}>{currentSong?.artist} ›</Text>
-              </TouchableOpacity>
-            </View>
-            <Heart color="white" size={26} />
-          </View>
+  <View style={{ flex: 1 }}>
+    <Text style={styles.posterTitle} numberOfLines={1}>{currentSong?.title}</Text>
+    <TouchableOpacity onPress={() => { setShowFullPoster(false); goToArtistProfile(currentSong?.artist); }}>
+      <Text style={[styles.posterArtist, {color: accentColor}]}>{currentSong?.artist} ›</Text>
+    </TouchableOpacity>
+  </View>
+  
+  {/* ====== CORAZÓN DEL REPRODUCTOR GRANDE CONECTADO ====== */}
+  <TouchableOpacity onPress={() => toggleFavorite(currentSong)}>
+    <Heart 
+      color={favoriteSongs.includes(currentSong?.id) ? accentColor : "white"} 
+      fill={favoriteSongs.includes(currentSong?.id) ? accentColor : "transparent"} 
+      size={26} 
+    />
+  </TouchableOpacity>
+  {/* ====================================================== */}
+</View>
 
-          {/* LÍNEA DE TIEMPO INTERACTIVA Y TIEMPOS */}
+          {/* LÍNEA DE TIEMPO INTERACTIVA Y TIEMPOS (SOPORTA ARRASTRE Y DESLIZAMIENTO) */}
           <View style={{ width: '90%', alignItems: 'center', alignSelf: 'center', marginTop: 15, marginBottom: 5 }}>
-            {/* Barra Progresiva Táctil */}
-            <TouchableOpacity 
-              activeOpacity={1}
+            <View 
               style={{ width: '100%', height: 30, justifyContent: 'center' }}
-              onPress={(e) => {
+              onStartShouldSetResponder={() => true}
+              onMoveShouldSetResponder={() => true}
+              onResponderRelease={(e) => {
                 const touchX = e.nativeEvent.locationX;
-                const barWidth = width * 0.9; 
+                // CORRECCIÓN: Usamos directamente Dimensions aquí para evitar el error de variable inexistente
+                const barWidth = Dimensions.get('window').width * 0.9;
+                const percentage = (touchX / barWidth) * 100;
+                handleSeek(Math.max(0, Math.min(100, percentage)));
+              }}
+              onResponderMove={(e) => {
+                const touchX = e.nativeEvent.locationX;
+                // CORRECCIÓN: Usamos directamente Dimensions aquí también
+                const barWidth = Dimensions.get('window').width * 0.9;
                 const percentage = (touchX / barWidth) * 100;
                 const safePercentage = Math.max(0, Math.min(100, percentage));
-                handleSeek(safePercentage);
+                setTrackProgress(safePercentage); 
+                if (duration > 0) setPosition((safePercentage / 100) * duration);
               }}
             >
               {/* Fondo de la barra */}
               <View style={{ width: '100%', height: 4, backgroundColor: '#333', borderRadius: 2 }}>
-                {/* Progreso activo de la canción */}
                 <View style={{ width: `${Math.max(0, Math.min(100, trackProgress))}%`, height: '100%', backgroundColor: accentColor, borderRadius: 2 }} />
               </View>
               
@@ -685,12 +903,16 @@ return (
               <View style={{ 
                 position: 'absolute', 
                 left: `${Math.max(0, Math.min(96, trackProgress))}%`, 
-                width: 12, 
-                height: 12, 
-                borderRadius: 6, 
-                backgroundColor: accentColor 
+                width: 14, 
+                height: 14, 
+                borderRadius: 7, 
+                backgroundColor: 'white',
+                elevation: 4,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.3
               }} />
-            </TouchableOpacity>
+            </View>
 
             {/* Textos de Minutos/Segundos Dinámicos */}
             <View style={{ width: '100%', flexDirection: 'row', justifyContent: 'space-between', marginTop: 5 }}>
@@ -699,27 +921,145 @@ return (
             </View>
           </View>
 
-          {/* CONTROLES DE REPRODUCCIÓN INFERIORES DEL MODAL */}
+          {/* CONTROLES PRINCIPALES ASOCIADOS A ESTADOS REALES */}
           <View style={styles.posterControls}>
+            <TouchableOpacity onPress={() => setIsShuffle(!isShuffle)}>
+              <Shuffle color={isShuffle ? accentColor : "white"} size={24} />
+            </TouchableOpacity>
+
             <TouchableOpacity onPress={handlePrevTrack}>
-              <SkipBack color="white" size={36} />
+              <SkipBack color="white" size={36} fill="white" />
             </TouchableOpacity>
+
             <TouchableOpacity onPress={() => togglePlay(currentSong)} style={[styles.bigPlayBtn, { backgroundColor: accentColor }]}>
-              {isPlaying ? <Pause color="black" fill="black" size={32} /> : <Play color="black" fill="black" size={32} />}
+              {isPlaying ? <Pause color="black" size={32} fill="black" /> : <Play color="black" size={32} fill="black" />}
             </TouchableOpacity>
+
             <TouchableOpacity onPress={handleNextTrack}>
-              <SkipForward color="white" size={36} />
+              <SkipForward color="white" size={36} fill="white" />
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => setIsRepeat(!isRepeat)}>
+              <Repeat color={isRepeat ? accentColor : "white"} size={24} />
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
-    </View>
-  );
-}
 
-// --- ESTILOS DE LA APLICACIÓN UNIFICADOS ---
+      {/* ================= MINI REPRODUCTOR FLOTANTE TRASERO (SIEMPRE DISPONIBLE) ================= */}
+      {currentSong && (
+        <TouchableOpacity 
+          style={styles.miniPlayer} 
+          onPress={() => setShowFullPoster(true)}
+          activeOpacity={0.9}
+        >
+          <Image source={{ uri: currentSong.image }} style={styles.miniArt} />
+          
+          <View style={{ flex: 1, marginLeft: 15 }}>
+            <Text style={styles.miniTitle} numberOfLines={1}>{currentSong.title}</Text>
+            <Text style={[styles.miniArtist, { color: accentColor }]} numberOfLines={1}>{currentSong.artist}</Text>
+          </View>
+          
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
+            <TouchableOpacity onPress={() => togglePlay(currentSong)} style={[styles.playBtnCircle, { backgroundColor: '#1c1c1e' }]}>
+              {isPlaying ? <Pause color="white" size={20} fill="white" /> : <Play color="white" size={20} fill="white" />}
+            </TouchableOpacity>
+            
+            <TouchableOpacity onPress={handleNextTrack}>
+              <SkipForward color="white" size={22} />
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      )}
+
+      {/* ================= MODAL DE GESTIÓN ADAPTADO (PLAYLISTS / AGREGAR) ================= */}
+<Modal visible={showPlaylistModal} transparent={true} animationType="fade">
+  <View style={styles.modalBackdrop}>
+    <View style={styles.modalMenu}>
+      
+      {/* MODO EDICIÓN: Si seleccionamos una playlist para organizar sus canciones */}
+      {songToAdd && songToAdd.songs ? (
+        <>
+          <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold', marginBottom: 5, textAlign: 'center' }}>Organizar Playlist</Text>
+          <Text style={{ color: accentColor, fontSize: 13, marginBottom: 15, textAlign: 'center' }}>{songToAdd.name}</Text>
+          
+          <ScrollView style={{ maxHeight: 300 }}>
+            {playlists.find(pl => pl.id === songToAdd.id)?.songs.map((song, idx, arr) => (
+              <View key={`${song.id}-${idx}`} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 0.5, borderBottomColor: '#222' }}>
+                <Image source={{ uri: song.image }} style={{ width: 30, height: 30, borderRadius: 4 }} />
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={{ color: 'white', fontSize: 13, fontWeight: '600' }} numberOfLines={1}>{song.title}</Text>
+                </View>
+                
+                {/* Flechas compactas de ordenamiento */}
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  {idx > 0 && (
+                    <TouchableOpacity onPress={() => moveSongInPlaylist(songToAdd.id, idx, 'up')} style={{ padding: 2 }}>
+                      <Text style={{ color: accentColor, fontSize: 18, fontWeight: 'bold' }}>↑</Text>
+                    </TouchableOpacity>
+                  )}
+                  {idx < arr.length - 1 && (
+                    <TouchableOpacity onPress={() => moveSongInPlaylist(songToAdd.id, idx, 'down')} style={{ padding: 2 }}>
+                      <Text style={{ color: accentColor, fontSize: 18, fontWeight: 'bold' }}>↓</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity onPress={() => removeSongFromPlaylist(songToAdd.id, song.id)} style={{ padding: 2, marginLeft: 4 }}>
+                    <Text style={{ color: '#ff4444', fontSize: 12, marginTop: 4 }}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+            {(!songToAdd.songs || songToAdd.songs.length === 0) && (
+              <Text style={{ color: '#555', textAlign: 'center', marginVertical: 20, fontStyle: 'italic' }}>No hay canciones en esta lista</Text>
+            )}
+          </ScrollView>
+        </>
+      ) : (
+        /* MODO NORMAL: Tu lógica previa de agregar canción a playlist */
+        <>
+          <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' }}>Agregar a Playlist</Text>
+          <ScrollView style={{ maxHeight: 200 }}>
+            {playlists.map(p => (
+              <TouchableOpacity key={p.id} style={styles.modalItem} onPress={() => addSongToPlaylist(p.id)}>
+                <Text style={{ color: 'white', fontSize: 16 }}>{p.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </>
+      )}
+
+      {/* Botón de cierre común */}
+      <TouchableOpacity 
+        style={{ backgroundColor: '#222', padding: 12, borderRadius: 10, marginTop: 15, alignItems: 'center' }}
+        onPress={() => {
+          setShowPlaylistModal(false);
+          setSongToAdd(null); // Reseteamos el estado al salir
+        }}
+      >
+        <Text style={{ color: 'white', fontWeight: 'bold' }}>Cerrar listo</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
+
+    </View>
+  ); // <--- AQUÍ TERMINA EL RETURN GENERAL
+} // <--- AQUÍ CIERRA DEFINTIVAMENTE LA FUNCIÓN APP
+// ================= ESTILOS GENERALES DE LA APLICACIÓN =================
 const styles = StyleSheet.create({
-  // --- NUEVOS ESTILOS PARA MENÚ LATERAL RESPONSIVO ---
+  chip: {
+  paddingHorizontal: 16,
+  paddingVertical: 8,
+  borderRadius: 20,
+  backgroundColor: '#1a1a1a',
+  justifyContent: 'center',
+  alignItems: 'center'
+},
+chipText: {
+  color: '#fff',
+  fontSize: 14,
+  fontWeight: 'bold'
+},
   mainLayout: {
     flex: 1,
     flexDirection: 'row', 
@@ -783,7 +1123,19 @@ const styles = StyleSheet.create({
   songArt: { width: 50, height: 50, borderRadius: 8 },
   songTitle: { fontWeight: 'bold', fontSize: 15 },
   songArtist: { color: '#888', fontSize: 12 },
-  miniPlayer: { position: 'absolute', bottom: 100, left: 10, right: 10, height: 75, backgroundColor: '#121212', borderRadius: 20, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15 },
+miniPlayer: { 
+    position: 'absolute', 
+    bottom: 30, 
+    left: 80, // <--- CAMBIA ESTO (Antes era 10, ahora deja libre el espacio de la barra lateral)
+    right: 15, // <--- AJUSTA ESTO (Le da un margen limpio al borde derecho)
+    height: 75, 
+    backgroundColor: '#121212', 
+    borderRadius: 20, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingHorizontal: 15, 
+    zIndex: 10 
+  },
   miniArt: { width: 50, height: 50, borderRadius: 12 },
   miniTitle: { color: 'white', fontWeight: 'bold' },
   miniArtist: { fontSize: 11 },
@@ -792,12 +1144,12 @@ const styles = StyleSheet.create({
   navItem: { alignItems: 'center' },
   navLabel: { fontSize: 11, marginTop: 5, fontWeight: 'bold' },
   posterContainer: { flex: 1, padding: 30, justifyContent: 'center', alignItems: 'center' },
-  closeBtn: { position: 'absolute', top: 50, left: 20 },
-  bigArt: { width: width * 0.85, height: width * 0.85, borderRadius: 25 },
-  posterMeta: { width: '100%', marginTop: 30 },
+  closeBtn: { position: 'absolute', top: 40, left: 25, padding: 10, zIndex: 20 },
+  bigArt: { width: width * 0.85, height: width * 0.85, borderRadius: 25, marginTop: 40 },
+  posterMeta: { width: '100%', marginTop: 25 },
   posterTitle: { color: 'white', fontSize: 26, fontWeight: 'bold' },
   posterArtist: { fontSize: 20, marginTop: 5 },
-  posterControls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginTop: 40 },
+  posterControls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginTop: 30 },
   bigPlayBtn: { width: 70, height: 70, borderRadius: 35, justifyContent: 'center', alignItems: 'center' },
   playlistCard: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
   playlistIcon: { width: 55, height: 55, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
