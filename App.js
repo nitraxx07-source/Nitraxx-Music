@@ -1,15 +1,56 @@
-import React, { useState, useRef } from 'react';
-import { StyleSheet, Text, View, TextInput, Image, TouchableOpacity, ScrollView, Dimensions, Modal, StatusBar, Alert, Switch } from 'react-native';
-import { Audio } from 'expo-av';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, Text, View, TextInput, Image, TouchableOpacity, ScrollView, Dimensions, Modal, StatusBar, Alert, Switch, NativeModules, Platform, ActivityIndicator } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system';
+import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
+import TrackPlayer, { Capability, Event, RepeatMode, State } from 'react-native-track-player';
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
+import { WebView } from 'react-native-webview';
 import { 
 Search, Pause, Play, SkipForward, SkipBack, Home, Library, 
   Settings, ListMusic, Heart, Repeat, Shuffle, Download, 
   MoreVertical, ChevronDown, ArrowLeft, Disc, Languages,
-  Sliders, Smartphone, Trash2, ShieldAlert, RotateCcw, Info, Github
+  Smartphone, Trash2, ShieldAlert, RotateCcw, Info, Github
 } from 'lucide-react-native';
 
 const { width, height } = Dimensions.get('window');
+const GOOGLE_WEB_CLIENT_ID = Constants.expoConfig?.extra?.googleWebClientId;
+const YOUTUBE_READONLY_SCOPE = 'https://www.googleapis.com/auth/youtube.readonly';
+const APP_LOGO_URI = Image.resolveAssetSource(require('./jvlogo1.png')).uri;
+const labels = {
+  Spanish: {
+    home: 'Inicio', songs: 'Canciones', library: 'Biblioteca', playlists: 'Listas de reproducción',
+    albums: 'Álbumes', artists: 'Artistas', settings: 'Ajustes', search: 'Buscar',
+    newPlaylist: 'Nueva playlist', create: 'Crear', cancel: 'Cancelar',
+  },
+  English: {
+    home: 'Home', songs: 'Songs', library: 'Library', playlists: 'Playlists',
+    albums: 'Albums', artists: 'Artists', settings: 'Settings', search: 'Search',
+    newPlaylist: 'New playlist', create: 'Create', cancel: 'Cancel',
+  },
+  Portuguese: {
+    home: 'Início', songs: 'Músicas', library: 'Biblioteca', playlists: 'Playlists',
+    albums: 'Álbuns', artists: 'Artistas', settings: 'Configurações', search: 'Buscar',
+    newPlaylist: 'Nova playlist', create: 'Criar', cancel: 'Cancelar',
+  },
+};
+
+const getYouTubeResource = (value) => {
+  try {
+    const url = new URL(value);
+    if (!['https:', 'http:'].includes(url.protocol)
+      || !['music.youtube.com', 'youtube.com', 'www.youtube.com', 'youtu.be'].includes(url.hostname)) return null;
+
+    const playlistId = url.searchParams.get('list');
+    const videoId = url.searchParams.get('v') || (url.hostname === 'youtu.be' ? url.pathname.slice(1) : null);
+    if (playlistId && /^[\w-]+$/.test(playlistId)) return { playlistId };
+    if (videoId && /^[\w-]+$/.test(videoId)) return { videoId };
+    return null;
+  } catch {
+    return null;
+  }
+};
 
 export default function App() {
   const [tab, setTab] = useState('home');
@@ -20,9 +61,14 @@ export default function App() {
   const [currentArtist, setCurrentArtist] = useState(null);
   const [currentSong, setCurrentSong] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playerReady, setPlayerReady] = useState(false);
+  const [googleUser, setGoogleUser] = useState(null);
   const [showFullPoster, setShowFullPoster] = useState(false);
   const [accentColor, setAccentColor] = useState('#BB86FC');
-  const [searchFilter, setSearchFilter] = useState('artist'); // 'artist' | 'album' | 'playlist'
+  const [searchFilter, setSearchFilter] = useState('song');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchMessage, setSearchMessage] = useState('');
+  const [youtubePlayback, setYoutubePlayback] = useState(null);
   const [currentCollectionSongs, setCurrentCollectionSongs] = useState([]);
   const [trackProgress, setTrackProgress] = useState(35); // Porcentaje de la línea de tiempo (0-100)
   // --- AÑADE ESTAS LÍNEAS JUSTO AQUÍ ---
@@ -34,8 +80,11 @@ export default function App() {
  const [playlists, setPlaylists] = useState([
   { id: 'fav_list', name: 'Favoritos', songs: [] }
 ]);
+ const [storageReady, setStorageReady] = useState(false);
   const [downloads, setDownloads] = useState({});
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
+ const [showCreatePlaylist, setShowCreatePlaylist] = useState(false);
+ const [newPlaylistName, setNewPlaylistName] = useState('');
   const [songToAdd, setSongToAdd] = useState(null);
 // --- ESTADOS DE CONFIGURACIÓN (NUEVOS) ---
   const [themeMode, setThemeMode] = useState('Dinámico');
@@ -88,19 +137,217 @@ export default function App() {
 
   // Modales de selección para los desplegables
   const [activeModal, setActiveModal] = useState(null);
+  const t = (key) => labels[appLanguage]?.[key] || labels.Spanish[key];
   
+  useEffect(() => {
+    let active = true;
 
-  const sound = useRef(new Audio.Sound());
+    const loadSavedState = async () => {
+      try {
+        const saved = await AsyncStorage.getItem('nitraxx-music:library:v1');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (!parsed || !Array.isArray(parsed.playlists) || !Array.isArray(parsed.favoriteSongs)
+            || !parsed.playlists.every(playlist => playlist
+              && typeof playlist.id === 'string'
+              && typeof playlist.name === 'string'
+              && Array.isArray(playlist.songs))
+            || !parsed.favoriteSongs.every(id => typeof id === 'string')) {
+            throw new Error('El formato guardado de la biblioteca no es válido.');
+          }
+          if (active) {
+            const hasFavorites = parsed.playlists.some(playlist => playlist.id === 'fav_list');
+            setPlaylists(hasFavorites
+              ? parsed.playlists
+              : [{ id: 'fav_list', name: 'Favoritos', songs: [] }, ...parsed.playlists]);
+            setFavoriteSongs(parsed.favoriteSongs);
+            setThemeMode(parsed.themeMode || 'Dinámico');
+            setAppLanguage(parsed.appLanguage || 'Spanish');
+            setSkipSilence(typeof parsed.skipSilence === 'boolean' ? parsed.skipSilence : false);
+          }
+        }
+      } catch (error) {
+        console.error('Error al cargar la biblioteca local:', error);
+        if (active) Alert.alert('Biblioteca', 'No se pudieron cargar los datos guardados.');
+      } finally {
+        if (active) setStorageReady(true);
+      }
+    };
+
+    loadSavedState();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!storageReady) return;
+
+    AsyncStorage.setItem('nitraxx-music:library:v1', JSON.stringify({
+      playlists,
+      favoriteSongs,
+      themeMode,
+      appLanguage,
+      skipSilence,
+    })).catch((error) => {
+      console.error('Error al guardar la biblioteca local:', error);
+      Alert.alert('Biblioteca', 'No se pudieron guardar los cambios en este dispositivo.');
+    });
+  }, [storageReady, playlists, favoriteSongs, themeMode, appLanguage, skipSilence]);
+
+  useEffect(() => {
+    let active = true;
+
+    const initialize = async () => {
+      try {
+        if (GOOGLE_WEB_CLIENT_ID) {
+          GoogleSignin.configure({
+            webClientId: GOOGLE_WEB_CLIENT_ID,
+            scopes: [YOUTUBE_READONLY_SCOPE],
+          });
+          setGoogleUser(GoogleSignin.getCurrentUser());
+        }
+
+        await TrackPlayer.setupPlayer({
+          autoHandleInterruptions: true,
+          maxCacheSize: 50 * 1024,
+        });
+        await TrackPlayer.updateOptions({
+          capabilities: [
+            Capability.Play,
+            Capability.Pause,
+            Capability.SkipToNext,
+            Capability.SkipToPrevious,
+            Capability.SeekTo,
+          ],
+          notificationCapabilities: [
+            Capability.Play,
+            Capability.Pause,
+            Capability.SkipToNext,
+            Capability.SkipToPrevious,
+          ],
+          compactCapabilities: [
+            Capability.Play,
+            Capability.Pause,
+            Capability.SkipToNext,
+          ],
+          progressUpdateEventInterval: 1,
+        });
+
+        if (active) setPlayerReady(true);
+      } catch (error) {
+        console.error('Error al iniciar el reproductor:', error);
+        if (active) {
+          Alert.alert('Reproductor', 'No se pudo iniciar el servicio de reproducción.');
+        }
+      }
+    };
+
+    initialize();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const stateSubscription = TrackPlayer.addEventListener(Event.PlaybackState, ({ state }) => {
+      setIsPlaying(state === State.Playing);
+    });
+    const progressSubscription = TrackPlayer.addEventListener(
+      Event.PlaybackProgressUpdated,
+      ({ position: currentPosition, duration: currentDuration }) => {
+        setPosition(currentPosition * 1000);
+        setDuration(currentDuration * 1000);
+        setTrackProgress(currentDuration > 0 ? (currentPosition / currentDuration) * 100 : 0);
+      }
+    );
+    const trackSubscription = TrackPlayer.addEventListener(
+      Event.PlaybackActiveTrackChanged,
+      ({ track }) => {
+        if (track) {
+          setCurrentSong({ ...track, image: track.image || track.artwork });
+        }
+      }
+    );
+    const queueSubscription = TrackPlayer.addEventListener(Event.PlaybackQueueEnded, () => {
+      setIsPlaying(false);
+    });
+    const errorSubscription = TrackPlayer.addEventListener(Event.PlaybackError, ({ message }) => {
+      console.error('Error de reproducción:', message);
+      Alert.alert('Reproducción', message || 'No se pudo reproducir esta pista.');
+    });
+
+    return () => {
+      stateSubscription.remove();
+      progressSubscription.remove();
+      trackSubscription.remove();
+      queueSubscription.remove();
+      errorSubscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (playerReady) {
+      TrackPlayer.setRepeatMode(isRepeat ? RepeatMode.Track : RepeatMode.Off).catch((error) => {
+        console.error('Error al actualizar repetición:', error);
+      });
+    }
+  }, [isRepeat, playerReady]);
+
+  useEffect(() => {
+    if (!playerReady || Platform.OS !== 'android') return;
+    NativeModules.TrackPlayerModule.setSkipSilence(skipSilence).catch((error) => {
+      console.error('Error al configurar la omisión de silencios:', error);
+      Alert.alert('Reproducción', 'No se pudo cambiar la omisión de silencios.');
+    });
+  }, [skipSilence, playerReady]);
 
   const getRandomColor = () => {
     const colors = ['#BB86FC', '#03DAC6', '#FF0266', '#FFDE03', '#00E5FF', '#76FF03', '#FF9100', '#64FFDA'];
     return colors[Math.floor(Math.random() * colors.length)];
   };
 
+  useEffect(() => {
+    setAccentColor(themeMode === 'Oscuro' ? '#03DAC6' : getRandomColor());
+  }, [themeMode]);
+
 // --- FUNCIONES DE DESCARGA Y PLAYLIST ---
-  const handleDownload = (id) => {
-    setDownloads(prev => ({ ...prev, [id]: 'loading' }));
-    setTimeout(() => setDownloads(prev => ({ ...prev, [id]: 'done' })), 2000);
+  const handleDownload = async (track) => {
+    if (!track?.downloadAllowed || !track.downloadUrl) {
+      Alert.alert(
+        'Descarga no disponible',
+        'Esta fuente no ofrece una descarga directa autorizada. Los enlaces de YouTube Music se abren en su aplicación oficial y no se descargan.'
+      );
+      return;
+    }
+
+    if (!track.downloadUrl.startsWith('https://') || !FileSystem.documentDirectory) {
+      Alert.alert('Descarga', 'La fuente o el almacenamiento no son válidos para descargar.');
+      return;
+    }
+
+    const safeId = String(track.id).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const directory = `${FileSystem.documentDirectory}downloads/`;
+    setDownloads(prev => ({ ...prev, [track.id]: { status: 'loading' } }));
+
+    try {
+      const extension = new URL(track.downloadUrl).pathname.match(/\.(mp3|m4a|aac|ogg|opus|wav)$/i)?.[0] || '.audio';
+      const fileUri = `${directory}${safeId}${extension}`;
+      await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
+      const result = await FileSystem.downloadAsync(track.downloadUrl, fileUri);
+      if (result.status < 200 || result.status >= 300) {
+        throw new Error(`El servidor respondió con HTTP ${result.status}.`);
+      }
+      setDownloads(prev => ({
+        ...prev,
+        [track.id]: { status: 'completed', uri: result.uri },
+      }));
+      Alert.alert('Descarga', `"${track.title}" se guardó para escuchar sin conexión.`);
+    } catch (error) {
+      setDownloads(prev => ({ ...prev, [track.id]: { status: 'error' } }));
+      console.error('Error al descargar la pista:', error);
+      Alert.alert('Descarga', error.message || 'No se pudo descargar esta pista.');
+    }
   };
 
   const moveSongInPlaylist = (playlistId, songIndex, direction) => {
@@ -135,19 +382,23 @@ export default function App() {
       return;
     }
 
+    const downloadableSongs = collectionSongs.filter(song => song.downloadAllowed && song.downloadUrl);
+    if (downloadableSongs.length === 0) {
+      Alert.alert('Descarga', 'Esta colección no contiene archivos con descarga directa autorizada.');
+      return;
+    }
+
     Alert.alert(
       "Descargar Todo", 
-      `¿Deseas descargar las ${collectionSongs.length} canciones de esta lista?`,
+      `¿Deseas descargar las ${downloadableSongs.length} canciones autorizadas de esta lista?`,
       [
         { text: "Cancelar", style: "cancel" },
         { 
           text: "Descargar", 
-          onPress: () => {
-            // Recorre cada canción y le activa el estado de descarga de 2 segundos que ya tienes
-            collectionSongs.forEach(song => {
-              handleDownload(song.id);
-            });
-            Alert.alert("Descarga", "Descargando colección en segundo plano...");
+          onPress: async () => {
+            for (const song of downloadableSongs) {
+              await handleDownload(song);
+            }
           }
         }
       ]
@@ -159,16 +410,35 @@ const downloadPlaylist = (playlist) => {
     return;
   }
   
-  Alert.alert("Descarga", `Iniciando descarga de ${playlist.songs.length} canciones...`);
-  
-  playlist.songs.forEach(song => {
-    handleDownload(song.id);
-  });
+  downloadFullCollection(playlist.songs);
 };
   const createPlaylist = () => {
-    Alert.prompt("Nueva Playlist", "Nombre de la lista:", (name) => {
-      if (name) setPlaylists([...playlists, { id: Date.now().toString(), name, songs: [] }]);
-    });
+    setNewPlaylistName('');
+    setShowCreatePlaylist(true);
+  };
+
+  const savePlaylist = () => {
+    const name = newPlaylistName.trim();
+    if (!name) {
+      Alert.alert('Nueva playlist', 'Escribe un nombre para la playlist.');
+      return;
+    }
+
+    if (playlists.some(playlist => playlist.name.toLowerCase() === name.toLowerCase())) {
+      Alert.alert('Nueva playlist', 'Ya existe una playlist con ese nombre.');
+      return;
+    }
+
+    setPlaylists(prev => [...prev, { id: Date.now().toString(), name, songs: [] }]);
+    setShowCreatePlaylist(false);
+  };
+
+  const openPlaylist = (playlist) => {
+    setCurrentArtist(playlist.name);
+    setCurrentCollectionSongs(playlist.songs);
+    setSongs(playlist.songs);
+    setTab('home');
+    setView('artist_profile');
   };
 const addSongToPlaylist = (playlistId) => {
     // 1. Buscamos la playlist para la alerta
@@ -194,58 +464,69 @@ const addSongToPlaylist = (playlistId) => {
   const [duration, setDuration] = useState(0);
 
   const playTrack = async (track) => {
-    try {
-      // 1. Detener y descargar el audio previo de forma segura si ya existe
-      if (sound.current) {
-        try {
-          await sound.current.unloadAsync();
-        } catch (e) {
-          // Captura excepciones por si el audio previo ya se había liberado
+    if (!track) return;
+
+    const youtubeResource = getYouTubeResource(track.externalUrl || '');
+    const youtubeTrack = track.youtubeVideoId || track.youtubePlaylistId || youtubeResource
+      ? {
+          ...track,
+          youtubeVideoId: track.youtubeVideoId || youtubeResource?.videoId,
+          youtubePlaylistId: track.youtubePlaylistId || youtubeResource?.playlistId,
         }
+      : null;
+
+    if (youtubeTrack) {
+      try {
+        if (playerReady) await TrackPlayer.pause();
+        setShowFullPoster(false);
+        setYoutubePlayback(youtubeTrack);
+      } catch (error) {
+        console.error('Error al pausar el reproductor antes de abrir YouTube:', error);
+        Alert.alert('Reproducción', 'No se pudo detener la pista actual.');
       }
+      return;
+    }
 
-      if (!track || !track.url) {
-        console.warn("Esta canción no tiene un link de reproducción válido.");
-        return;
-      }
+    if (!track.url) {
+      Alert.alert('Reproducción', 'Esta pista no tiene una fuente de audio autorizada.');
+      return;
+    }
+    if (!playerReady) {
+      Alert.alert('Reproductor', 'El servicio de audio todavía se está iniciando.');
+      return;
+    }
 
-      // Asegurar que si vienes del buscador global, la colección activa tenga las canciones para cambiar de pista
-      if (!currentCollectionSongs || currentCollectionSongs.length === 0) {
-        setCurrentCollectionSongs(songs);
-      }
-
-      // 2. Crear y cargar la NUEVA instancia de sonido directamente en la referencia
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: track.url },
-        { shouldPlay: true }
-      );
-
-      sound.current = newSound;
-
-      // 3. Sincronizar el estado visual de manera inmediata para pintar el mini-reproductor
-      setCurrentSong(track); 
-      setIsPlaying(true);
-
-      // 4. Configurar el callback de actualización una vez que el objeto ya está inicializado y cargado
-      sound.current.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded) {
-          setPosition(status.positionMillis);
-          setDuration(status.durationMillis || 1);
-
-          if (status.durationMillis > 0) {
-            const progressPercent = (status.positionMillis / status.durationMillis) * 100;
-            setTrackProgress(progressPercent);
-          }
-
-          // Al terminar la canción pasa automáticamente a la siguiente
-          if (status.didJustFinish && !status.isLooping) {
-            handleNextTrack();
-          }
-        }
+    const activeList = currentCollectionSongs.some(song => song.id === track.id)
+      ? currentCollectionSongs
+      : songs.some(song => song.id === track.id)
+        ? songs
+        : [track];
+    const queue = activeList
+      .filter(song => song.url && !song.externalUrl)
+      .map(song => {
+        const download = downloads[song.id];
+        return {
+          ...song,
+          id: String(song.id),
+          url: download?.status === 'completed' ? download.uri : song.url,
+          artwork: song.image || song.artwork,
+        };
       });
+    const queueIndex = queue.findIndex(song => song.id === String(track.id));
 
+    if (queueIndex < 0) {
+      Alert.alert('Reproducción', 'No hay pistas reproducibles en esta colección.');
+      return;
+    }
+
+    try {
+      await TrackPlayer.setQueue(queue);
+      await TrackPlayer.skip(queueIndex);
+      await TrackPlayer.play();
+      setCurrentSong(track);
     } catch (error) {
-      console.error("Error al reproducir audio:", error);
+      console.error('Error al reproducir audio:', error);
+      Alert.alert('Reproducción', error.message || 'No se pudo reproducir esta pista.');
     }
   };
 
@@ -284,27 +565,28 @@ const addSongToPlaylist = (playlistId) => {
   }
 
   setFavoriteSongs(updatedFavoritesIds);
+  if (!isAlreadyFav && autoDownloadFavs) handleDownload(track);
 };
   // --- CONTROLADOR DE SIGUIENTE PISTA (CON SHUFFLE Y REPEAT) ---
-  const handleNextTrack = () => {
-    if (!songs || songs.length === 0 || !currentSong) return;
-    
+  const handleNextTrack = async () => {
+    const activeList = currentCollectionSongs.length > 0 ? currentCollectionSongs : songs;
+    const playableTracks = activeList.filter(song => song.url && !song.externalUrl);
+    if (playableTracks.length === 0 || !currentSong) return;
+
     if (isRepeat) {
-      // Si está activo repetir, vuelve a reproducir la misma canción
-      playTrack(currentSong);
+      await TrackPlayer.seekTo(0);
+      await TrackPlayer.play();
       return;
     }
 
     if (isShuffle) {
-      // Elige una canción al azar de la lista actual
-      const randomIndex = Math.floor(Math.random() * songs.length);
-      playTrack(songs[randomIndex]);
-    } else {
-      // Secuencia normal
-      const currentIndex = songs.findIndex(s => s.id === currentSong.id);
-      const nextIndex = (currentIndex + 1) % songs.length;
-      playTrack(songs[nextIndex]);
+      const randomIndex = Math.floor(Math.random() * playableTracks.length);
+      await playTrack(playableTracks[randomIndex]);
+      return;
     }
+
+    const currentIndex = playableTracks.findIndex(song => song.id === currentSong.id);
+    await playTrack(playableTracks[(currentIndex + 1) % playableTracks.length]);
   };
    // --- BOTÓN PARA PREPARAR LA ADICIÓN A UNA PLAYLIST ---
   const openAddToPlaylistModal = (track) => {
@@ -363,35 +645,147 @@ const addSongToPlaylist = (playlistId) => {
   }
 
   async function handleSearch() {
-    if (!query) return;
+    const searchTerm = query.trim();
+    if (!searchTerm) {
+      setSearchMessage('Escribe algo para comenzar la búsqueda.');
+      return;
+    }
+
+    setIsSearching(true);
+    setSearchMessage('');
     setView('results');
+    setSongs([]);
+    setCurrentCollectionSongs([]);
+    setArtistAlbums([]);
+
     try {
-      const respSongs = await fetch(`https://itunes.apple.com/search?term=${query}&entity=song&limit=20`);
-      const dataSongs = await respSongs.json();
-      const respAlb = await fetch(`https://itunes.apple.com/search?term=${query}&entity=album&limit=10`);
-      const dataAlb = await respAlb.json();
+      const importedResource = getYouTubeResource(searchTerm);
+      if (importedResource) {
+        const importedTrack = {
+          id: `youtube-${importedResource.videoId || importedResource.playlistId}`,
+          title: importedResource.playlistId ? 'Playlist de YouTube Music' : 'Video de YouTube',
+          artist: 'YouTube',
+          image: APP_LOGO_URI,
+          ...(
+            importedResource.playlistId
+              ? { youtubePlaylistId: importedResource.playlistId }
+              : { youtubeVideoId: importedResource.videoId }
+          ),
+        };
+        setSongs([importedTrack]);
+        setCurrentCollectionSongs([importedTrack]);
+        setSearchMessage('Enlace listo para reproducirse dentro de la app.');
+        return;
+      }
 
-      const mappedSongs = dataSongs.results.map(s => ({
-        id: s.trackId.toString(),
-        title: s.trackName,
-        artist: s.artistName,
-        image: s.artworkUrl100.replace('100x100', '600x600'),
-        url: s.previewUrl
-      }));
+      if (searchFilter === 'song' || searchFilter === 'playlist') {
+        if (!googleUser) {
+          setSearchMessage('Conecta Google para buscar y reproducir música de YouTube aquí.');
+          return;
+        }
 
-      setCurrentCollectionSongs(mappedSongs); // Sincroniza la colección del buscador principal
+        const { accessToken } = await GoogleSignin.getTokens();
+        if (!accessToken) throw new Error('Google no devolvió un token de acceso. Vuelve a iniciar sesión.');
+        const resourceType = searchFilter === 'playlist' ? 'playlist' : 'video';
+        const response = await fetch(
+          `https://www.googleapis.com/youtube/v3/search?part=snippet&type=${resourceType}&maxResults=20&q=${encodeURIComponent(searchTerm)}`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error?.message || 'YouTube no pudo completar la búsqueda.');
+        }
+
+        const results = (data.items || []).map((item) => {
+          const resourceId = resourceType === 'playlist' ? item.id?.playlistId : item.id?.videoId;
+          if (!resourceId) return null;
+          return {
+            id: `youtube-${resourceId}`,
+            title: item.snippet?.title || 'Sin título',
+            artist: item.snippet?.channelTitle || 'YouTube',
+            image: item.snippet?.thumbnails?.high?.url
+              || item.snippet?.thumbnails?.medium?.url
+              || item.snippet?.thumbnails?.default?.url
+              || '',
+            ...(resourceType === 'playlist'
+              ? { youtubePlaylistId: resourceId }
+              : { youtubeVideoId: resourceId }),
+          };
+        }).filter(Boolean);
+
+        setSongs(results);
+        setCurrentCollectionSongs(results);
+        setSearchMessage(results.length ? '' : 'No se encontraron resultados.');
+        return;
+      }
+
+      const entity = searchFilter === 'album' ? 'album' : 'song';
+      const response = await fetch(
+        `https://itunes.apple.com/search?term=${encodeURIComponent(searchTerm)}&entity=${entity}&limit=20`
+      );
+      if (!response.ok) throw new Error('iTunes no pudo completar la búsqueda.');
+      const data = await response.json();
+      const results = data.results || [];
+
+      if (searchFilter === 'album') {
+        const albums = results.map((album) => ({
+          id: album.collectionId?.toString(),
+          name: album.collectionName,
+          image: album.artworkUrl100?.replace('100x100', '600x600') || '',
+          year: album.releaseDate ? new Date(album.releaseDate).getFullYear() : '',
+        })).filter((album) => album.id && album.name);
+        setArtistAlbums(albums);
+        setSearchMessage(albums.length ? '' : 'No se encontraron álbumes.');
+        return;
+      }
+
+      const mappedSongs = results.map(song => ({
+        id: song.trackId?.toString(),
+        title: song.trackName,
+        artist: song.artistName,
+        image: song.artworkUrl100?.replace('100x100', '600x600') || '',
+        url: song.previewUrl,
+      })).filter(song => song.id && song.title);
+
+      setCurrentCollectionSongs(mappedSongs);
       setSongs(mappedSongs);
-
-      setArtistAlbums(dataAlb.results.map(a => ({
-        id: a.collectionId.toString(),
-        name: a.collectionName,
-        image: a.artworkUrl100.replace('100x100', '600x600'),
-        year: new Date(a.releaseDate).getFullYear()
-      })));
-    } catch (e) { 
-      console.error("Error buscando:", e); 
+      setSearchMessage(mappedSongs.length ? '' : 'No se encontraron canciones.');
+    } catch (error) {
+      console.error('Error buscando:', error);
+      setSearchMessage(error.message || 'No se pudieron cargar los resultados.');
+    } finally {
+      setIsSearching(false);
     }
   }
+
+  const handleGoogleSignIn = async () => {
+    if (!GOOGLE_WEB_CLIENT_ID) {
+      Alert.alert('Google', 'Falta configurar el OAuth Client ID de Google.');
+      return;
+    }
+
+    try {
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const result = googleUser
+        ? await GoogleSignin.addScopes({ scopes: [YOUTUBE_READONLY_SCOPE] })
+        : await GoogleSignin.signIn();
+      if (result?.type === 'success') setGoogleUser(result.data);
+    } catch (error) {
+      if (error.code === statusCodes.SIGN_IN_CANCELLED) return;
+      console.error('Error al iniciar sesión con Google:', error);
+      Alert.alert('Google', error.message || 'No se pudo iniciar sesión.');
+    }
+  };
+
+  const handleGoogleSignOut = async () => {
+    try {
+      await GoogleSignin.signOut();
+      setGoogleUser(null);
+    } catch (error) {
+      console.error('Error al cerrar sesión de Google:', error);
+      Alert.alert('Google', error.message || 'No se pudo cerrar la sesión.');
+    }
+  };
 
   // --- FORMATEADOR DE TIEMPO Y AVANCE ---
   const formatTime = (millis) => {
@@ -403,10 +797,10 @@ const addSongToPlaylist = (playlistId) => {
 
   const handleSeek = async (percentage) => {
     try {
-      if (sound.current && duration > 0) {
-        const newPositionMillis = (percentage / 100) * duration;
-        await sound.current.setPositionAsync(newPositionMillis);
-        setPosition(newPositionMillis);
+      if (playerReady && duration > 0) {
+        const newPositionSeconds = (percentage / 100) * (duration / 1000);
+        await TrackPlayer.seekTo(newPositionSeconds);
+        setPosition(newPositionSeconds * 1000);
       }
     } catch (e) {
       console.error("Error al mover la línea de tiempo:", e);
@@ -417,7 +811,7 @@ const addSongToPlaylist = (playlistId) => {
   async function loadAndPlay(item) {
     if (!item) return;
     await playTrack(item);
-    setAccentColor(getRandomColor());
+    if (themeMode === 'Dinámico') setAccentColor(getRandomColor());
   }
 
   async function togglePlay(item) {
@@ -429,31 +823,28 @@ const addSongToPlaylist = (playlistId) => {
     }
 
     try {
-      if (sound.current) {
-        if (isPlaying) {
-          await sound.current.pauseAsync();
-          setIsPlaying(false);
-        } else {
-          await sound.current.playAsync();
-          setIsPlaying(true);
-        }
+      const playbackState = await TrackPlayer.getPlaybackState();
+      if (playbackState.state === State.Playing) {
+        await TrackPlayer.pause();
+      } else {
+        await TrackPlayer.play();
       }
     } catch (e) {
       console.error("Error en togglePlay:", e);
+      Alert.alert('Reproductor', 'No se pudo cambiar el estado de reproducción.');
     }
   }
   
-  const handlePrevTrack = () => {
+  const handlePrevTrack = async () => {
     const activeList = (currentCollectionSongs && currentCollectionSongs.length > 0) ? currentCollectionSongs : songs;
-    
-    if (!activeList || activeList.length === 0 || !currentSong) return;
+    const playableTracks = activeList.filter(song => song.url && !song.externalUrl);
+    if (playableTracks.length === 0 || !currentSong) return;
 
-    const currentIndex = activeList.findIndex(s => s.id === currentSong.id);
-    const prevIndex = (currentIndex - 1 + activeList.length) % activeList.length;
-    const prevTrack = activeList[prevIndex];
-
-    if (prevTrack) {
-      loadAndPlay(prevTrack);
+    const currentIndex = playableTracks.findIndex(song => song.id === currentSong.id);
+    if (currentIndex <= 0) {
+      await playTrack(playableTracks[playableTracks.length - 1]);
+    } else {
+      await playTrack(playableTracks[currentIndex - 1]);
     }
   };
 
@@ -487,13 +878,13 @@ const addSongToPlaylist = (playlistId) => {
           <TouchableOpacity onPress={() => setTab('home')} style={{marginRight: 15}}>
             <ArrowLeft color="white" size={28} />
           </TouchableOpacity>
-          <Text style={{ color: 'white', fontSize: 32, fontWeight: 'bold' }}>Ajustes</Text>
+          <Text style={{ color: 'white', fontSize: 32, fontWeight: 'bold' }}>{t('settings')}</Text>
         </View>
 
         {/* SECCIÓN: PERSONALIZACIÓN */}
         <View style={{ backgroundColor: '#0f0f11', borderRadius: 16, padding: 16, marginBottom: 16 }}>
           <Text style={{ color: accentColor, fontWeight: 'bold', fontSize: 14, marginBottom: 10 }}>Personalización</Text>
-          {renderSelector('Modo del tema', themeMode, ['Dinámico', 'Oscuro', 'Claro'], setThemeMode)}
+          {renderSelector('Modo del tema', themeMode, ['Dinámico', 'Oscuro'], setThemeMode)}
           {renderSelector('Idioma', appLanguage, ['Spanish', 'English', 'Portuguese'], setAppLanguage)}
           {renderSelector('Interfaz de usuario del reproductor', playerUI, ['Estándar', 'Minimalista', 'Completa'], setPlayerUI)}
           {renderOptionRow('Barra inferior de navegación', 'Cambiar a la barra de navegación inferior', <Switch value={navBarSwitch} onValueChange={setNavBarSwitch} trackColor={{ true: accentColor }} />)}
@@ -517,11 +908,35 @@ const addSongToPlaylist = (playlistId) => {
           {renderSelector('Calidad de la transmisión', streamQuality, ['Baja', 'Media', 'Alta', 'Ultra'], setStreamQuality)}
           {renderOptionRow('Normalización del volumen', 'Establece el mismo nivel de volumen para todas las canciones', <Switch value={volumeNorm} onValueChange={setVolumeNorm} trackColor={{ true: accentColor }} />)}
           {renderOptionRow('Canciones en caché', 'Almacenamiento de las canciones en la caché durante la reproducción', <Switch value={cacheSongs} onValueChange={setCacheSongs} trackColor={{ true: accentColor }} />)}
-          {renderOptionRow('Omitir el silencio', 'El silencio se omitirá en la reproducción de la música', <Switch value={skipSilence} onValueChange={setSkipSilence} trackColor={{ true: accentColor }} />)}
+          {renderOptionRow(
+            'Omitir silencios',
+            Platform.OS === 'android' ? 'Salta los segmentos silenciosos dentro de la pista' : 'Disponible solo en Android',
+            Platform.OS === 'android'
+              ? <Switch value={skipSilence} onValueChange={setSkipSilence} trackColor={{ true: accentColor }} />
+              : <Text style={{ color: '#777' }}>Solo Android</Text>
+          )}
           {renderOptionRow('Mantener la pantalla encendida mientras se reproduce', 'Si está activado, la pantalla permanecerá despierta', <Switch value={keepScreenOn} onValueChange={setKeepScreenOn} trackColor={{ true: accentColor }} />)}
           {renderOptionRow('Restaurar la última sesión de reproducción', 'Restaura automáticamente la última sesión al iniciar la aplicación', <Switch value={restoreSession} onValueChange={setRestoreSession} trackColor={{ true: accentColor }} />)}
           {renderOptionRow('Abrir automáticamente pantalla del reproductor', 'Activar/desactivar la apertura automática a pantalla completa al seleccionar una canción', <Switch value={autoOpenPlayer} onValueChange={setAutoOpenPlayer} trackColor={{ true: accentColor }} />)}
-          {renderOptionRow('Ecualizador', 'Abrir ecualizador del sistema', <TouchableOpacity onPress={() => Alert.alert("Ecualizador", "Abriendo el ecualizador del dispositivo...")}><Sliders color="white" size={20} /></TouchableOpacity>)}
+          {renderOptionRow('Ecualizador', 'No está disponible con el motor de audio actual', <Text style={{ color: '#777' }}>Pendiente</Text>)}
+          {renderOptionRow('Android Auto', 'Requiere un servicio multimedia de navegación adicional', <Text style={{ color: '#777' }}>Pendiente</Text>)}
+          {renderOptionRow('Controles en notificación y Bluetooth', 'Disponibles durante la reproducción', <Text style={{ color: playerReady ? accentColor : '#777' }}>{playerReady ? 'Activos' : 'Iniciando'}</Text>)}
+        </View>
+
+        <View style={{ backgroundColor: '#0f0f11', borderRadius: 16, padding: 16, marginBottom: 16 }}>
+          <Text style={{ color: accentColor, fontWeight: 'bold', fontSize: 14, marginBottom: 10 }}>Cuenta</Text>
+          {renderOptionRow(
+            'Google',
+            googleUser?.user?.email || 'No has iniciado sesión',
+            <TouchableOpacity
+              onPress={googleUser ? handleGoogleSignOut : handleGoogleSignIn}
+              style={{ backgroundColor: '#222', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
+            >
+              <Text style={{ color: 'white', fontSize: 12 }}>
+                {googleUser ? 'Cerrar sesión' : 'Iniciar sesión'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* SECCIÓN: DESCARGAR */}
@@ -530,7 +945,7 @@ const addSongToPlaylist = (playlistId) => {
           {renderOptionRow('Descarga automática de canciones favoritas', 'Descarga automática de canciones cuando se añaden a favoritas', <Switch value={autoDownloadFavs} onValueChange={setAutoDownloadFavs} trackColor={{ true: accentColor }} />)}
           {renderSelector('Descargando formato del archivo', downloadFormat, ['M4a', 'Opus', 'MP3'], setDownloadFormat)}
           {renderOptionRow('Ubicación de la descarga', 'In App storage directory', <TouchableOpacity onPress={() => Alert.alert("Almacenamiento", "Ubicación por defecto restablecida.")}><Text style={{ color: 'white', textDecorationLine: 'underline' }}>Restablecer</Text></TouchableOpacity>)}
-          {renderOptionRow('Exportar archivos descargados', 'Haga clic aquí para exportar el archivo descargado al directorio público', <TouchableOpacity style={{backgroundColor: '#222', padding: 8, borderRadius: 8}} onPress={() => Alert.alert("Exportar", "Canciones exportadas a tu carpeta de Música.")}><Text style={{color: 'white', fontSize: 12}}>Exportar</Text></TouchableOpacity>)}
+          {renderOptionRow('Exportar archivos descargados', 'La exportación a una carpeta pública todavía no está disponible', <Text style={{ color: '#777' }}>Pendiente</Text>)}
         </View>
 
         {/* SECCIÓN: COPIA DE SEGURIDAD */}
@@ -565,28 +980,28 @@ return (
         {/* ================= BARRA LATERAL IZQUIERDA ================= */}
         <View style={styles.sidebar}>
           <TouchableOpacity onPress={() => { setSongs([]); setCurrentCollectionSongs([]); setArtistAlbums([]); setView('results'); setTab('home'); }}>
-            <Disc color={accentColor} size={28} />
+            <Image source={require('./jvlogo1.png')} style={{ width: 34, height: 34, borderRadius: 8 }} />
           </TouchableOpacity>
 
           <View style={styles.sidebarCenterOptions}>
             <TouchableOpacity style={styles.verticalNavButton} onPress={() => { setSongs([]); setCurrentCollectionSongs([]); setArtistAlbums([]); setView('results'); setTab('home'); }}>
-              <Text style={[styles.verticalText, tab === 'home' && view === 'results' && styles.verticalTextActive]}>Inicio</Text>
+              <Text style={[styles.verticalText, tab === 'home' && view === 'results' && styles.verticalTextActive]}>{t('home')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.verticalNavButton} onPress={() => { setView('results'); setTab('songs'); }}>
-              <Text style={[styles.verticalText, tab === 'songs' && styles.verticalTextActive]}>Canciones</Text>
+              <Text style={[styles.verticalText, tab === 'songs' && styles.verticalTextActive]}>{t('songs')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.verticalNavButton} onPress={() => setTab('library')}>
-              <Text style={[styles.verticalText, tab === 'library' && styles.verticalTextActive]}>Listas de reproducción</Text>
+              <Text style={[styles.verticalText, tab === 'library' && styles.verticalTextActive]}>{t('playlists')}</Text>
             </TouchableOpacity>
             
             <TouchableOpacity style={styles.verticalNavButton} onPress={() => { setView('results'); setTab('albums'); }}>
-              <Text style={[styles.verticalText, tab === 'albums' && styles.verticalTextActive]}>Álbumes</Text>
+              <Text style={[styles.verticalText, tab === 'albums' && styles.verticalTextActive]}>{t('albums')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.verticalNavButton} onPress={() => { setView('results'); setTab('artists'); }}>
-              <Text style={[styles.verticalText, tab === 'artists' && styles.verticalTextActive]}>Artistas</Text>
+              <Text style={[styles.verticalText, tab === 'artists' && styles.verticalTextActive]}>{t('artists')}</Text>
             </TouchableOpacity>
           </View>
 
@@ -606,15 +1021,48 @@ return (
               renderSettingsView()
             ) : tab === 'library' ? (
               <View style={{ padding: 10, paddingTop: 60 }}>
-                <Text style={styles.artistNameBig}>Biblioteca</Text>
-                <Text style={{ color: '#666', marginTop: 20, fontSize: 16 }}>Tus playlists y canciones guardadas aparecerán aquí.</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+                  <Text style={[styles.artistNameBig, { flex: 1 }]}>{t('library')}</Text>
+                  <TouchableOpacity
+                    onPress={createPlaylist}
+                    style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1c1c1e', padding: 10, borderRadius: 10 }}
+                  >
+                    <ListMusic color={accentColor} size={18} />
+                    <Text style={{ color: 'white', marginLeft: 8, fontWeight: '600' }}>{t('newPlaylist')}</Text>
+                  </TouchableOpacity>
+                </View>
+                {playlists.map(playlist => (
+                  <View
+                    key={playlist.id}
+                    style={{ flexDirection: 'row', alignItems: 'center', padding: 12, marginBottom: 10, backgroundColor: '#101012', borderRadius: 12 }}
+                  >
+                    <TouchableOpacity onPress={() => openPlaylist(playlist)} style={{ flex: 1 }}>
+                      <Text style={{ color: 'white', fontWeight: '600', fontSize: 15 }}>{playlist.name}</Text>
+                      <Text style={{ color: '#777', fontSize: 12, marginTop: 4 }}>
+                        {playlist.songs.length} canciones
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => downloadPlaylist(playlist)} style={{ padding: 8 }}>
+                      <Download color="#888" size={18} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setSongToAdd(playlist);
+                        setShowPlaylistModal(true);
+                      }}
+                      style={{ padding: 8 }}
+                    >
+                      <MoreVertical color="#888" size={18} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
               </View>
             ) : (
               <>
                 {/* ENCABEZADO ESTÁNDAR */}
                 {view === 'results' && (
                   <View style={[styles.header, {paddingHorizontal: 10, paddingTop: 50}]}>
-                    <Text style={styles.logo}>NITRAXX <Text style={{color: accentColor}}>MUSIC</Text></Text>
+                    <Image source={require('./jvlogo1.png')} style={{ width: 112, height: 114, alignSelf: 'center' }} />
                   </View>
                 )}
 
@@ -660,34 +1108,34 @@ return (
         style={[styles.chip, searchFilter === 'artist' && { backgroundColor: accentColor }]} 
         onPress={() => setSearchFilter('artist')}
       >
-        <Text style={[styles.chipText, searchFilter === 'artist' && { color: '#000' }]}>Artistas</Text>
+        <Text style={[styles.chipText, searchFilter === 'artist' && { color: '#000' }]}>{t('artists')}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity 
         style={[styles.chip, searchFilter === 'album' && { backgroundColor: accentColor }]} 
         onPress={() => setSearchFilter('album')}
       >
-        <Text style={[styles.chipText, searchFilter === 'album' && { color: '#000' }]}>Álbumes</Text>
+        <Text style={[styles.chipText, searchFilter === 'album' && { color: '#000' }]}>{t('albums')}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity 
         style={[styles.chip, searchFilter === 'playlist' && { backgroundColor: accentColor }]} 
         onPress={() => setSearchFilter('playlist')}
       >
-        <Text style={[styles.chipText, searchFilter === 'playlist' && { color: '#000' }]}>Playlists</Text>
+        <Text style={[styles.chipText, searchFilter === 'playlist' && { color: '#000' }]}>{t('playlists')}</Text>
       </TouchableOpacity>
     </View>
 
-    <Text style={styles.sectionTitle}>Canciones</Text>
+    <Text style={styles.sectionTitle}>{t('songs')}</Text>
     {currentCollectionSongs.map((item, index) => {
       // Validaciones visuales en tiempo real para descargas y favoritos
-      const isDownloaded = downloads[item.id] === 'completed';
+      const isDownloaded = downloads[item.id]?.status === 'completed';
       const isFav = favoriteSongs.includes(item.id);
 
       return (
         <TouchableOpacity key={item.id} style={styles.songRow} onPress={() => togglePlay(item)}>
           <Text style={styles.songIndex}>{index + 1}</Text>
-          <Image source={{uri: item.image}} style={styles.songArt} />
+          <Image source={{uri: item.image || APP_LOGO_URI}} style={styles.songArt} />
           
           <View style={{flex: 1, marginLeft: 15}}>
             <Text style={[styles.songTitle, {color: currentSong?.id === item.id ? accentColor : 'white'}]} numberOfLines={1}>{item.title}</Text>
@@ -698,12 +1146,15 @@ return (
           
           {/* Botones de acción de la canción conectados a tus funciones reales */}
           <View style={{flexDirection: 'row', alignItems: 'center', gap: 14, marginRight: 5}}>
-            <TouchableOpacity onPress={() => handleDownload(item.id)}>
+            <TouchableOpacity onPress={() => handleDownload(item)}>
               <Download color={isDownloaded ? accentColor : "#777"} size={18} />
             </TouchableOpacity>
             
             <TouchableOpacity onPress={() => toggleFavorite(item)}>
               <Heart color={isFav ? accentColor : "#777"} fill={isFav ? accentColor : "transparent"} size={18} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => openAddToPlaylistModal(item)}>
+              <MoreVertical color="#777" size={18} />
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -718,21 +1169,32 @@ return (
                     <View style={[styles.searchBar, {marginHorizontal: 10, marginBottom: 10}]}>
                       <Search color="#888" size={20} />
                       <TextInput 
-                        placeholder={`Buscar por ${searchFilter === 'artist' ? 'artista' : searchFilter === 'album' ? 'álbum' : 'playlist'}...`} 
+                        placeholder={`${t('search')} ${searchFilter === 'song' ? 'canciones' : searchFilter === 'artist' ? t('artists').toLowerCase() : searchFilter === 'album' ? t('albums').toLowerCase() : t('playlists').toLowerCase()}...`}
                         placeholderTextColor="#444" 
                         style={styles.input}
                         value={query}
                         onChangeText={setQuery}
+                        returnKeyType="search"
                         onSubmitEditing={() => {
                           handleSearch();
                           if(query.trim() && searchFilter === 'artist') setFavoriteArtist(query); 
                         }}
                       />
+                      <TouchableOpacity
+                        onPress={handleSearch}
+                        disabled={isSearching}
+                        accessibilityLabel="Buscar"
+                        style={{ paddingHorizontal: 10, paddingVertical: 6 }}
+                      >
+                        {isSearching
+                          ? <ActivityIndicator color={accentColor} size="small" />
+                          : <Text style={{ color: accentColor, fontWeight: 'bold' }}>Buscar</Text>}
+                      </TouchableOpacity>
                     </View>
 
                     {/* FILTROS MULTI-OPCIÓN */}
                     <View style={{flexDirection: 'row', justifyContent: 'flex-start', gap: 10, paddingHorizontal: 10}}>
-                      {['artist', 'album', 'playlist'].map((filterType) => (
+                      {['song', 'artist', 'album', 'playlist'].map((filterType) => (
                         <TouchableOpacity 
                           key={filterType} 
                           style={{
@@ -743,11 +1205,36 @@ return (
                           onPress={() => setSearchFilter(filterType)}
                         >
                           <Text style={{color: searchFilter === filterType ? 'black' : 'white', fontWeight: 'bold', fontSize: 12, textTransform: 'capitalize'}}>
-                            {filterType === 'artist' ? 'Artistas' : filterType === 'album' ? 'Álbumes' : 'Playlists'}
+                            {filterType === 'song' ? 'Canciones' : filterType === 'artist' ? 'Artistas' : filterType === 'album' ? 'Álbumes' : 'Playlists'}
                           </Text>
                         </TouchableOpacity>
                       ))}
                     </View>
+                    {(searchFilter === 'song' || searchFilter === 'playlist') && (
+                      <View style={{ marginHorizontal: 10, marginTop: 10, padding: 12, borderRadius: 10, backgroundColor: '#101012' }}>
+                        {googleUser ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <Text style={{ color: '#aaa', fontSize: 12, flex: 1 }} numberOfLines={1}>
+                              Google: {googleUser.user?.email || 'cuenta conectada'}
+                            </Text>
+                            <TouchableOpacity onPress={handleGoogleSignIn} style={{ paddingLeft: 12 }}>
+                              <Text style={{ color: accentColor, fontWeight: 'bold', fontSize: 12 }}>Permitir YouTube</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : (
+                          <TouchableOpacity onPress={handleGoogleSignIn}>
+                            <Text style={{ color: accentColor, fontWeight: 'bold' }}>
+                              Conectar Google para buscar y reproducir música aquí
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    )}
+                    {!!searchMessage && (
+                      <Text accessibilityLiveRegion="polite" style={{ color: '#aaa', marginHorizontal: 12, marginTop: 10 }}>
+                        {searchMessage}
+                      </Text>
+                    )}
                   </View>
                 )}
             
@@ -771,7 +1258,9 @@ return (
 
                     {songs.length > 0 && (
                       <View>
-                        <Text style={[styles.sectionTitle, {marginLeft: 10}]}>Canciones Encontradas</Text>
+                        <Text style={[styles.sectionTitle, {marginLeft: 10}]}>
+                          {searchFilter === 'playlist' ? 'Playlists encontradas' : searchFilter === 'song' ? 'Canciones encontradas' : 'Canciones encontradas'}
+                        </Text>
                         {songs.map((item, index) => (
                           <TouchableOpacity 
                             key={item.id} 
@@ -790,8 +1279,9 @@ return (
                               </TouchableOpacity>
                             </View>
                             <View style={{flexDirection: 'row', alignItems: 'center', gap: 14, marginRight: 5}}>
-                              <TouchableOpacity onPress={() => Alert.alert("Descarga", `Descargando...`)}><Download color="#777" size={18} /></TouchableOpacity>
-                              <TouchableOpacity onPress={() => Alert.alert("Favoritos", `Añadido`)}><Heart color="#777" size={18} /></TouchableOpacity>
+                              {item.url ? <TouchableOpacity onPress={() => handleDownload(item)}><Download color={downloads[item.id]?.status === 'completed' ? accentColor : '#777'} size={18} /></TouchableOpacity> : null}
+                              <TouchableOpacity onPress={() => toggleFavorite(item)}><Heart color={favoriteSongs.includes(item.id) ? accentColor : '#777'} fill={favoriteSongs.includes(item.id) ? accentColor : 'transparent'} size={18} /></TouchableOpacity>
+                              <TouchableOpacity onPress={() => openAddToPlaylistModal(item)}><MoreVertical color="#777" size={18} /></TouchableOpacity>
                             </View>
                           </TouchableOpacity>
                         ))}
@@ -839,6 +1329,50 @@ return (
           </ScrollView>
         </View>
       </View>
+
+      <Modal
+        visible={Boolean(youtubePlayback)}
+        animationType="slide"
+        onRequestClose={() => setYoutubePlayback(null)}
+      >
+        <View style={{ flex: 1, backgroundColor: '#080808', paddingTop: 40 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 14 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: 'white', fontSize: 17, fontWeight: 'bold' }} numberOfLines={1}>
+                {youtubePlayback?.title || 'YouTube'}
+              </Text>
+              <Text style={{ color: '#888', fontSize: 12, marginTop: 3 }} numberOfLines={1}>
+                {youtubePlayback?.artist || 'Reproducción en la app'}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => setYoutubePlayback(null)} accessibilityLabel="Cerrar reproductor">
+              <ArrowLeft color="white" size={26} />
+            </TouchableOpacity>
+          </View>
+          {youtubePlayback && (
+            <WebView
+              key={youtubePlayback.id}
+              style={{ width: '100%', aspectRatio: 16 / 9, backgroundColor: '#000' }}
+              source={{
+                uri: youtubePlayback.youtubePlaylistId
+                  ? `https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(youtubePlayback.youtubePlaylistId)}&autoplay=1&playsinline=1`
+                  : `https://www.youtube.com/embed/${encodeURIComponent(youtubePlayback.youtubeVideoId)}?autoplay=1&playsinline=1&rel=0`,
+              }}
+              javaScriptEnabled
+              domStorageEnabled
+              allowsFullscreenVideo
+              allowsInlineMediaPlayback
+              mediaPlaybackRequiresUserAction={false}
+              onError={() => {
+                Alert.alert('YouTube', 'No se pudo cargar el reproductor. Comprueba tu conexión e inténtalo de nuevo.');
+              }}
+            />
+          )}
+          <Text style={{ color: '#777', fontSize: 12, textAlign: 'center', margin: 16 }}>
+            Reproductor oficial de YouTube
+          </Text>
+        </View>
+      </Modal>
 
       {/* ================= MODAL DEL REPRODUCTOR GRANDE (COMPLETAMENTE INDEPENDIENTE) ================= */}
       <Modal visible={showFullPoster} animationType="slide">
@@ -971,6 +1505,39 @@ return (
           </View>
         </TouchableOpacity>
       )}
+
+      <Modal
+        visible={showCreatePlaylist}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCreatePlaylist(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalMenu}>
+            <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold', marginBottom: 15 }}>
+              Nueva playlist
+            </Text>
+            <TextInput
+              value={newPlaylistName}
+              onChangeText={setNewPlaylistName}
+              placeholder="Nombre de la playlist"
+              placeholderTextColor="#777"
+              maxLength={60}
+              returnKeyType="done"
+              onSubmitEditing={savePlaylist}
+              style={{ color: 'white', backgroundColor: '#222', padding: 12, borderRadius: 8, width: '100%' }}
+            />
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16, gap: 12 }}>
+              <TouchableOpacity onPress={() => setShowCreatePlaylist(false)} style={{ padding: 10 }}>
+                <Text style={{ color: '#aaa' }}>{t('cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={savePlaylist} style={{ backgroundColor: accentColor, padding: 10, borderRadius: 8 }}>
+                <Text style={{ color: '#111', fontWeight: 'bold' }}>{t('create')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* ================= MODAL DE GESTIÓN ADAPTADO (PLAYLISTS / AGREGAR) ================= */}
 <Modal visible={showPlaylistModal} transparent={true} animationType="fade">

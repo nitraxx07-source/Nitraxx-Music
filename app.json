@@ -3,15 +3,15 @@
     "name": "Nitraxx Music",
     "slug": "nitraxx-music",
     "version": "1.8.0",
-    "owner": "nitraxx07",
-    "sdkVersion": "50.0.0",
+    "owner": "nitraxx",
+    "sdkVersion": "51.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./jvlogo1.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./jvlogo1.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#071427"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -23,16 +23,26 @@
       "package": "com.nitraxx.music.player",
       "versionCode": 70,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./jvlogo1.png",
+        "backgroundColor": "#071427"
       }
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./jvlogo1.png"
     },
     "plugins": [
-  "expo-av",
-  "expo-linear-gradient"
-]
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.23110911913-7epfoka7oc1obnpa3or8bh20nea4skkm"
+        }
+      ]
+    ],
+    "extra": {
+      "googleWebClientId": "23110911913-7epfoka7oc1obnpa3or8bh20nea4skkm.apps.googleusercontent.com",
+      "eas": {
+        "projectId": "3b0f5b98-3fb9-459f-832e-70881878b5f3"
+      }
+    }
   }
 }

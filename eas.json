@@ -1,5 +1,11 @@
 {
   "build": {
+    "universal": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
+    },
     "localapk": {
       "android": {
         "buildType": "apk",

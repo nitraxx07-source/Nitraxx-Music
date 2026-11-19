@@ -1,0 +1,35 @@
+diff --git a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt
+index b2409a0..c68b075 100644
+--- a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt
++++ b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt
+@@ -488,6 +488,14 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+         callback.resolve(null)
+     }
+ 
++    @ReactMethod
++    fun setSkipSilence(enabled: Boolean, callback: Promise) = scope.launch {
++        if (verifyServiceBoundOrReject(callback)) return@launch
++
++        musicService.setSkipSilence(enabled)
++        callback.resolve(null)
++    }
++
+     @ReactMethod
+     fun getVolume(callback: Promise) = scope.launch {
+         if (verifyServiceBoundOrReject(callback)) return@launch
+diff --git a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt
+index afa6b0f..dbc8239 100644
+--- a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt
++++ b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt
+@@ -407,6 +407,11 @@ class MusicService : HeadlessJsTaskService() {
+         player.volume = value
+     }
+ 
++    @MainThread
++    fun setSkipSilence(enabled: Boolean) {
++        player.skipSilence = enabled
++    }
++
+     @MainThread
+     fun getDurationInSeconds(): Double = player.duration.toSeconds()
+ 
