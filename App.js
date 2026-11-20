@@ -68,6 +68,7 @@ export default function App() {
   const [searchFilter, setSearchFilter] = useState('song');
   const [isSearching, setIsSearching] = useState(false);
   const [searchMessage, setSearchMessage] = useState('');
+  const [hasSearched, setHasSearched] = useState(false);
   const [youtubePlayback, setYoutubePlayback] = useState(null);
   const [currentCollectionSongs, setCurrentCollectionSongs] = useState([]);
   const [trackProgress, setTrackProgress] = useState(35); // Porcentaje de la línea de tiempo (0-100)
@@ -94,34 +95,13 @@ export default function App() {
   const [disableAnimation, setDisableAnimation] = useState(false);
   const [enableSwipe, setEnableSwipe] = useState(true);
   
-  // --- DATOS SIMULADOS PARA LA PANTALLA DE INICIO ---
-  const [favoriteArtist, setFavoriteArtist] = useState('Maná'); // Puedes cambiarlo dinámicamente al entrar a un perfil
-
-  // --- ÁLBUMES PARA LA PANTALLA INICIAL ---
-  const homeAlbums = [
-    { id: 'alb1', name: 'Sueños Líquidos', artist: 'Maná', year: '1997', image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300' },
-    { id: 'alb2', name: 'Canción Animal', artist: 'Soda Stereo', year: '1990', image: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=300' },
-    { id: 'alb3', name: 'Romance', artist: 'Luis Miguel', year: '1991', image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300' },
-  ];
-
-  const recommendedPlaylists = [
-    { id: 'p1', name: 'Mix Diario', tracks: '50 canciones', color: '#1db954' },
-    { id: 'p2', name: 'Éxitos de Rock', tracks: '32 canciones', color: '#e91e63' },
-    { id: 'p3', name: 'Para Concentrarse', tracks: '40 canciones', color: '#00bcd4' },
-  ];
-
-  const topSongs = [
-    { id: 'top1', title: 'Clavado En Un Bar', artist: 'Maná', image: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=100' },
-    { id: 'top2', title: 'La Incondicional', artist: 'Luis Miguel', image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=100' },
-    { id: 'top3', title: 'De Música Ligera', artist: 'Soda Stereo', image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=100' },
-  ];
-
-  const genericRecommendations = [
-    { id: 'rec1', title: 'Rayando El Sol', artist: 'Maná', image: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=100' },
-    { id: 'rec2', title: 'Persiana Americana', artist: 'Soda Stereo', image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=100' },
-  ];
-  
-  const [initialCount, setInitialCount] = useState('3');
+  const [topSongs, setTopSongs] = useState([]);
+  const [topAlbums, setTopAlbums] = useState([]);
+  const [isLoadingCharts, setIsLoadingCharts] = useState(false);
+  const [chartError, setChartError] = useState('');
+  const [chartsUpdatedAt, setChartsUpdatedAt] = useState(null);
+  const [loadingChartSongId, setLoadingChartSongId] = useState(null);
+  const [initialCount, setInitialCount] = useState('10');
   const [homeCache, setHomeCache] = useState(true);
   
   const [streamQuality, setStreamQuality] = useState('Alta');
@@ -133,7 +113,6 @@ export default function App() {
   const [autoOpenPlayer, setAutoOpenPlayer] = useState(true);
   
   const [autoDownloadFavs, setAutoDownloadFavs] = useState(false);
-  const [downloadFormat, setDownloadFormat] = useState('M4a');
 
   // Modales de selección para los desplegables
   const [activeModal, setActiveModal] = useState(null);
@@ -307,6 +286,64 @@ export default function App() {
     return colors[Math.floor(Math.random() * colors.length)];
   };
 
+  const loadHomeCharts = async () => {
+    setIsLoadingCharts(true);
+    setChartError('');
+
+    const fetchChart = async (type) => {
+      const response = await fetch(
+        `https://rss.marketingtools.apple.com/api/v2/es/music/most-played/25/${type}.json?refresh=${Date.now()}`
+      );
+      if (!response.ok) throw new Error(`No se pudo cargar el top de ${type}.`);
+      const data = await response.json();
+      return data.feed?.results || [];
+    };
+
+    try {
+      const [songsResult, albumsResult] = await Promise.allSettled([
+        fetchChart('songs'),
+        fetchChart('albums'),
+      ]);
+      if (songsResult.status === 'rejected') throw songsResult.reason;
+
+      setTopSongs(songsResult.value.map((song) => ({
+        id: String(song.id),
+        title: song.name,
+        artist: song.artistName,
+        artistId: song.artistId ? String(song.artistId) : null,
+        image: song.artworkUrl100?.replace('100x100bb', '600x600bb') || APP_LOGO_URI,
+        source: 'itunes-chart',
+      })));
+
+      if (albumsResult.status === 'fulfilled') {
+        setTopAlbums(albumsResult.value.map((album) => ({
+          id: String(album.id),
+          collectionId: String(album.id),
+          name: album.name,
+          artist: album.artistName,
+          artistId: album.artistId ? String(album.artistId) : null,
+          image: album.artworkUrl100?.replace('100x100bb', '600x600bb') || APP_LOGO_URI,
+          year: album.releaseDate ? new Date(album.releaseDate).getFullYear() : '',
+        })));
+      } else {
+        console.error('Error al cargar el top de álbumes:', albumsResult.reason);
+        setTopAlbums([]);
+        setChartError('Se actualizaron las canciones, pero no se pudo cargar el top de álbumes.');
+      }
+
+      setChartsUpdatedAt(new Date());
+    } catch (error) {
+      console.error('Error al actualizar los tops musicales:', error);
+      setChartError(error.message || 'No se pudieron actualizar los tops musicales.');
+    } finally {
+      setIsLoadingCharts(false);
+    }
+  };
+
+  useEffect(() => {
+    loadHomeCharts();
+  }, []);
+
   useEffect(() => {
     setAccentColor(themeMode === 'Oscuro' ? '#03DAC6' : getRandomColor());
   }, [themeMode]);
@@ -316,7 +353,7 @@ export default function App() {
     if (!track?.downloadAllowed || !track.downloadUrl) {
       Alert.alert(
         'Descarga no disponible',
-        'Esta fuente no ofrece una descarga directa autorizada. Los enlaces de YouTube Music se abren en su aplicación oficial y no se descargan.'
+        'Esta fuente no ofrece una descarga directa autorizada. YouTube se reproduce en su reproductor oficial, pero esta función no descarga su audio.'
       );
       return;
     }
@@ -463,6 +500,21 @@ const addSongToPlaylist = (playlistId) => {
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
 
+  const findYouTubeVideo = async (track) => {
+    if (!googleUser) return null;
+
+    const { accessToken } = await GoogleSignin.getTokens();
+    if (!accessToken) throw new Error('Google no devolvió un token de acceso.');
+    const searchTerm = `${track.title} ${track.artist || ''}`.trim();
+    const response = await fetch(
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&maxResults=1&q=${encodeURIComponent(searchTerm)}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || 'YouTube no pudo encontrar la canción.');
+    return data.items?.[0]?.id?.videoId || null;
+  };
+
   const playTrack = async (track) => {
     if (!track) return;
 
@@ -487,8 +539,50 @@ const addSongToPlaylist = (playlistId) => {
       return;
     }
 
+    if (googleUser && (track.source === 'itunes' || track.source === 'itunes-chart')) {
+      try {
+        const videoId = await findYouTubeVideo(track);
+        if (videoId) {
+          setShowFullPoster(false);
+          setYoutubePlayback({
+            ...track,
+            id: `youtube-${videoId}`,
+            youtubeVideoId: videoId,
+          });
+          return;
+        }
+      } catch (error) {
+        console.error('Error al buscar la versión completa en YouTube:', error);
+        if (track.source === 'itunes-chart') {
+          setChartError('YouTube no respondió; se intentará reproducir la vista previa disponible.');
+        }
+      }
+    }
+
+    if (!track.url && track.source === 'itunes-chart') {
+      try {
+        const response = await fetch(`https://itunes.apple.com/lookup?id=${encodeURIComponent(track.id)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error('iTunes no pudo cargar la vista previa.');
+        const preview = data.results?.find(result => result.wrapperType === 'track' && result.previewUrl);
+        if (!preview) throw new Error('Esta canción no tiene una vista previa disponible en iTunes.');
+        track = {
+          ...track,
+          title: preview.trackName || track.title,
+          artist: preview.artistName || track.artist,
+          image: preview.artworkUrl100?.replace('100x100', '600x600') || track.image,
+          url: preview.previewUrl,
+          source: 'itunes-preview',
+        };
+      } catch (error) {
+        console.error('Error al cargar la vista previa de la canción:', error);
+        Alert.alert('Reproducción', error.message || 'No se pudo cargar esta canción.');
+        return;
+      }
+    }
+
     if (!track.url) {
-      Alert.alert('Reproducción', 'Esta pista no tiene una fuente de audio autorizada.');
+      Alert.alert('Reproducción', 'No hay una vista previa autorizada disponible para esta pista.');
       return;
     }
     if (!playerReady) {
@@ -594,53 +688,98 @@ const addSongToPlaylist = (playlistId) => {
     setShowPlaylistModal(true); // Muestra el modal de listas [cite: 10]
   };
 
-  // --- VINCULACIÓN DE COLECCIONES ---
-  const goToCollection = (title, type) => {
-    setCurrentArtist(`${type}: ${title}`);
+  const goToCollection = async (collection, type) => {
+    const collectionName = typeof collection === 'string' ? collection : collection.name;
+    const collectionId = typeof collection === 'object'
+      ? collection.collectionId || collection.id
+      : null;
+    setCurrentArtist(`${type}: ${collectionName}`);
     setView('artist_profile');
-    
-    const collectionTracks = [
-      { id: `track-${type}-1`, title: 'Track 01: Introducción Épica', artist: title, image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' },
-      { id: `track-${type}-2`, title: 'Track 02: Single Principal', artist: title, image: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=300', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3' },
-      { id: `track-${type}-3`, title: 'Track 03: Melodía Urbana', artist: title, image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3' },
-      { id: `track-${type}-4`, title: 'Track 04: Cierre Acústico', artist: title, image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3' }
-    ];
-    
-    setCurrentCollectionSongs(collectionTracks);
-    setSongs(collectionTracks); 
+    setCurrentCollectionSongs([]);
+    setSongs([]);
+    setSearchMessage('');
+
+    if (!collectionId || !/^\d+$/.test(String(collectionId))) {
+      Alert.alert('Colección', 'No se encontró el identificador de este álbum.');
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `https://itunes.apple.com/lookup?id=${encodeURIComponent(collectionId)}&entity=song`
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error('iTunes no pudo cargar las canciones del álbum.');
+
+      const collectionTracks = (data.results || [])
+        .filter(track => track.wrapperType === 'track' && track.trackId)
+        .map(track => ({
+          id: String(track.trackId),
+          title: track.trackName,
+          artist: track.artistName || collection.artist,
+          image: track.artworkUrl100?.replace('100x100', '600x600') || collection.image || APP_LOGO_URI,
+          url: track.previewUrl,
+          source: 'itunes',
+        }));
+
+      setCurrentCollectionSongs(collectionTracks);
+      setSongs(collectionTracks);
+      if (collectionTracks.length === 0) {
+        setSearchMessage('El álbum no tiene canciones o vistas previas disponibles.');
+      }
+    } catch (error) {
+      console.error('Error al cargar las canciones del álbum:', error);
+      Alert.alert('Álbum', error.message || 'No se pudo cargar el álbum.');
+    }
   };
 
-  // --- PERFIL DE ARTISTA (ITUNES) ---
-  async function goToArtistProfile(artistName) {
+  async function goToArtistProfile(artist) {
+    const artistName = typeof artist === 'string' ? artist : artist?.title || artist?.artist;
+    const artistId = typeof artist === 'object' ? artist.artistId || artist.id : null;
     if (!artistName) return;
     setCurrentArtist(artistName);
     setAccentColor(getRandomColor());
     setView('artist_profile');
+    setCurrentCollectionSongs([]);
+    setSongs([]);
+
     try {
-      const respSongs = await fetch(`https://itunes.apple.com/search?term=${artistName}&entity=song&limit=20`);
-      const dataSongs = await respSongs.json();
-      const respAlb = await fetch(`https://itunes.apple.com/search?term=${artistName}&entity=album&limit=10`);
-      const dataAlb = await respAlb.json();
+      const songsUrl = artistId && /^\d+$/.test(String(artistId))
+        ? `https://itunes.apple.com/lookup?id=${encodeURIComponent(artistId)}&entity=song&limit=25`
+        : `https://itunes.apple.com/search?term=${encodeURIComponent(artistName)}&entity=song&limit=25`;
+      const albumsUrl = artistId && /^\d+$/.test(String(artistId))
+        ? `https://itunes.apple.com/lookup?id=${encodeURIComponent(artistId)}&entity=album&limit=25`
+        : `https://itunes.apple.com/search?term=${encodeURIComponent(artistName)}&entity=album&limit=25`;
+      const [respSongs, respAlbums] = await Promise.all([fetch(songsUrl), fetch(albumsUrl)]);
+      if (!respSongs.ok || !respAlbums.ok) throw new Error('iTunes no pudo cargar el perfil del artista.');
+      const [dataSongs, dataAlbums] = await Promise.all([respSongs.json(), respAlbums.json()]);
 
-      const mappedSongs = dataSongs.results.map(s => ({
-        id: s.trackId.toString(),
-        title: s.trackName,
-        artist: s.artistName,
-        image: s.artworkUrl100.replace('100x100', '1000x1000'),
-        url: s.previewUrl
-      }));
+      const mappedSongs = (dataSongs.results || [])
+        .filter(song => song.wrapperType === 'track' && song.trackId)
+        .map(song => ({
+          id: String(song.trackId),
+          title: song.trackName,
+          artist: song.artistName || artistName,
+          image: song.artworkUrl100?.replace('100x100', '600x600') || APP_LOGO_URI,
+          url: song.previewUrl,
+          source: 'itunes',
+        }));
 
-      setCurrentCollectionSongs(mappedSongs); // Fijamos la colección activa al entrar al perfil
+      setCurrentCollectionSongs(mappedSongs);
       setSongs(mappedSongs);
-
-      setArtistAlbums(dataAlb.results.map(a => ({
-        id: a.collectionId.toString(),
-        name: a.collectionName,
-        image: a.artworkUrl100.replace('100x100', '600x600'),
-        year: new Date(a.releaseDate).getFullYear()
-      })));
-    } catch (e) { 
-      console.error(e); 
+      setArtistAlbums((dataAlbums.results || [])
+        .filter(album => album.wrapperType === 'collection' && album.collectionId)
+        .map(album => ({
+          id: String(album.collectionId),
+          collectionId: String(album.collectionId),
+          name: album.collectionName,
+          artist: album.artistName || artistName,
+          image: album.artworkUrl100?.replace('100x100', '600x600') || APP_LOGO_URI,
+          year: album.releaseDate ? new Date(album.releaseDate).getFullYear() : '',
+        })));
+    } catch (error) {
+      console.error('Error al cargar el perfil del artista:', error);
+      Alert.alert('Artista', error.message || 'No se pudo cargar el perfil del artista.');
     }
   }
 
@@ -653,6 +792,7 @@ const addSongToPlaylist = (playlistId) => {
 
     setIsSearching(true);
     setSearchMessage('');
+    setHasSearched(true);
     setView('results');
     setSongs([]);
     setCurrentCollectionSongs([]);
@@ -678,17 +818,17 @@ const addSongToPlaylist = (playlistId) => {
         return;
       }
 
-      if (searchFilter === 'song' || searchFilter === 'playlist') {
+      if (searchFilter === 'playlist' || searchFilter === 'song') {
         if (!googleUser) {
-          setSearchMessage('Conecta Google para buscar y reproducir música de YouTube aquí.');
+          setSearchMessage('Conecta Google para buscar canciones y playlists en YouTube Music.');
           return;
         }
 
+        const resourceType = searchFilter === 'playlist' ? 'playlist' : 'video';
         const { accessToken } = await GoogleSignin.getTokens();
         if (!accessToken) throw new Error('Google no devolvió un token de acceso. Vuelve a iniciar sesión.');
-        const resourceType = searchFilter === 'playlist' ? 'playlist' : 'video';
         const response = await fetch(
-          `https://www.googleapis.com/youtube/v3/search?part=snippet&type=${resourceType}&maxResults=20&q=${encodeURIComponent(searchTerm)}`,
+          `https://www.googleapis.com/youtube/v3/search?part=snippet&type=${resourceType}${resourceType === 'video' ? '&videoCategoryId=10' : ''}&maxResults=20&q=${encodeURIComponent(searchTerm)}`,
           { headers: { Authorization: `Bearer ${accessToken}` } }
         );
         const data = await response.json();
@@ -715,11 +855,17 @@ const addSongToPlaylist = (playlistId) => {
 
         setSongs(results);
         setCurrentCollectionSongs(results);
-        setSearchMessage(results.length ? '' : 'No se encontraron resultados.');
+        setSearchMessage(results.length
+          ? ''
+          : `No se encontraron ${resourceType === 'playlist' ? 'playlists de YouTube Music' : 'canciones de YouTube Music'}.`);
         return;
       }
 
-      const entity = searchFilter === 'album' ? 'album' : 'song';
+      const entity = searchFilter === 'album'
+        ? 'album'
+        : searchFilter === 'artist'
+          ? 'musicArtist'
+          : 'song';
       const response = await fetch(
         `https://itunes.apple.com/search?term=${encodeURIComponent(searchTerm)}&entity=${entity}&limit=20`
       );
@@ -727,10 +873,26 @@ const addSongToPlaylist = (playlistId) => {
       const data = await response.json();
       const results = data.results || [];
 
+      if (searchFilter === 'artist') {
+        const artists = results.map((artist) => ({
+          id: String(artist.artistId),
+          artistId: String(artist.artistId),
+          title: artist.artistName,
+          artist: 'Artista',
+          image: APP_LOGO_URI,
+          kind: 'artist',
+        })).filter(artist => artist.artistId && artist.title);
+        setSongs(artists);
+        setSearchMessage(artists.length ? '' : 'No se encontraron artistas.');
+        return;
+      }
+
       if (searchFilter === 'album') {
         const albums = results.map((album) => ({
           id: album.collectionId?.toString(),
+          collectionId: album.collectionId?.toString(),
           name: album.collectionName,
+          artist: album.artistName,
           image: album.artworkUrl100?.replace('100x100', '600x600') || '',
           year: album.releaseDate ? new Date(album.releaseDate).getFullYear() : '',
         })).filter((album) => album.id && album.name);
@@ -745,11 +907,14 @@ const addSongToPlaylist = (playlistId) => {
         artist: song.artistName,
         image: song.artworkUrl100?.replace('100x100', '600x600') || '',
         url: song.previewUrl,
+        source: 'itunes',
       })).filter(song => song.id && song.title);
 
       setCurrentCollectionSongs(mappedSongs);
       setSongs(mappedSongs);
-      setSearchMessage(mappedSongs.length ? '' : 'No se encontraron canciones.');
+      setSearchMessage(mappedSongs.length
+        ? 'Resultados de iTunes: las pistas disponibles se reproducen como vista previa.'
+        : 'No se encontraron canciones.');
     } catch (error) {
       console.error('Error buscando:', error);
       setSearchMessage(error.message || 'No se pudieron cargar los resultados.');
@@ -773,7 +938,14 @@ const addSongToPlaylist = (playlistId) => {
     } catch (error) {
       if (error.code === statusCodes.SIGN_IN_CANCELLED) return;
       console.error('Error al iniciar sesión con Google:', error);
-      Alert.alert('Google', error.message || 'No se pudo iniciar sesión.');
+      const errorCode = String(error.code || error.statusCode || '');
+      const isOAuthConfigurationError = errorCode === '10' || errorCode === 'DEVELOPER_ERROR';
+      Alert.alert(
+        'Google',
+        isOAuthConfigurationError
+          ? 'Google rechazó la configuración de esta app (código 10). Comprueba que el cliente OAuth Android tenga el paquete com.nitraxx.music.player y el SHA-1 del certificado con el que se firmó este APK.'
+          : `${error.message || 'No se pudo iniciar sesión.'}${errorCode ? ` (código: ${errorCode})` : ''}`
+      );
     }
   };
 
@@ -896,7 +1068,7 @@ const addSongToPlaylist = (playlistId) => {
         <View style={{ backgroundColor: '#0f0f11', borderRadius: 16, padding: 16, marginBottom: 16 }}>
           <Text style={{ color: accentColor, fontWeight: 'bold', fontSize: 14, marginBottom: 10 }}>Contenido</Text>
           {renderOptionRow('Como se detecta el contenido', 'Selecciones rápidas', <Text style={{ color: '#777' }}>Automático</Text>)}
-          {renderSelector('Recuento de contenidos', initialCount, ['3', '5', '10', '15'], setInitialCount)}
+          {renderSelector('Canciones del top en pantalla', initialCount, ['5', '10', '15', '25'], setInitialCount)}
           {renderOptionRow('Caché de datos de la pantalla de inicio', 'Si esta opción está activada, la pantalla de inicio se cargará instantáneamente', <Switch value={homeCache} onValueChange={setHomeCache} trackColor={{ true: accentColor }} />)}
           {renderOptionRow('Canalizado', 'Enlace con las listas de reproducción', <TouchableOpacity onPress={() => Alert.alert("Sincronización", "Listas vinculadas exitosamente.")}><Text style={{ color: accentColor, fontWeight: 'bold' }}>Enlace</Text></TouchableOpacity>)}
           {renderOptionRow('Borrar caché de imágenes', 'Haga clic aquí para borrar las imágenes en caché.', <TouchableOpacity onPress={() => Alert.alert("Limpieza", "Caché de imágenes vaciada de forma segura.")}><Trash2 color="#ef4444" size={20} /></TouchableOpacity>)}
@@ -943,7 +1115,7 @@ const addSongToPlaylist = (playlistId) => {
         <View style={{ backgroundColor: '#0f0f11', borderRadius: 16, padding: 16, marginBottom: 16 }}>
           <Text style={{ color: accentColor, fontWeight: 'bold', fontSize: 14, marginBottom: 10 }}>Descargar</Text>
           {renderOptionRow('Descarga automática de canciones favoritas', 'Descarga automática de canciones cuando se añaden a favoritas', <Switch value={autoDownloadFavs} onValueChange={setAutoDownloadFavs} trackColor={{ true: accentColor }} />)}
-          {renderSelector('Descargando formato del archivo', downloadFormat, ['M4a', 'Opus', 'MP3'], setDownloadFormat)}
+          {renderOptionRow('Calidad de descarga', 'Se conserva el archivo original autorizado; no se convierte ni se extrae audio de YouTube', <Text style={{ color: '#777' }}>Original</Text>)}
           {renderOptionRow('Ubicación de la descarga', 'In App storage directory', <TouchableOpacity onPress={() => Alert.alert("Almacenamiento", "Ubicación por defecto restablecida.")}><Text style={{ color: 'white', textDecorationLine: 'underline' }}>Restablecer</Text></TouchableOpacity>)}
           {renderOptionRow('Exportar archivos descargados', 'La exportación a una carpeta pública todavía no está disponible', <Text style={{ color: '#777' }}>Pendiente</Text>)}
         </View>
@@ -979,16 +1151,16 @@ return (
         
         {/* ================= BARRA LATERAL IZQUIERDA ================= */}
         <View style={styles.sidebar}>
-          <TouchableOpacity onPress={() => { setSongs([]); setCurrentCollectionSongs([]); setArtistAlbums([]); setView('results'); setTab('home'); }}>
+          <TouchableOpacity onPress={() => { setSongs([]); setCurrentCollectionSongs([]); setArtistAlbums([]); setHasSearched(false); setSearchMessage(''); setView('results'); setTab('home'); }}>
             <Image source={require('./jvlogo1.png')} style={{ width: 34, height: 34, borderRadius: 8 }} />
           </TouchableOpacity>
 
           <View style={styles.sidebarCenterOptions}>
-            <TouchableOpacity style={styles.verticalNavButton} onPress={() => { setSongs([]); setCurrentCollectionSongs([]); setArtistAlbums([]); setView('results'); setTab('home'); }}>
+            <TouchableOpacity style={styles.verticalNavButton} onPress={() => { setSongs([]); setCurrentCollectionSongs([]); setArtistAlbums([]); setHasSearched(false); setSearchMessage(''); setView('results'); setTab('home'); }}>
               <Text style={[styles.verticalText, tab === 'home' && view === 'results' && styles.verticalTextActive]}>{t('home')}</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.verticalNavButton} onPress={() => { setView('results'); setTab('songs'); }}>
+            <TouchableOpacity style={styles.verticalNavButton} onPress={() => { setSearchFilter('song'); setHasSearched(false); setView('results'); setTab('songs'); }}>
               <Text style={[styles.verticalText, tab === 'songs' && styles.verticalTextActive]}>{t('songs')}</Text>
             </TouchableOpacity>
 
@@ -996,11 +1168,11 @@ return (
               <Text style={[styles.verticalText, tab === 'library' && styles.verticalTextActive]}>{t('playlists')}</Text>
             </TouchableOpacity>
             
-            <TouchableOpacity style={styles.verticalNavButton} onPress={() => { setView('results'); setTab('albums'); }}>
+            <TouchableOpacity style={styles.verticalNavButton} onPress={() => { setSearchFilter('album'); setHasSearched(false); setView('results'); setTab('albums'); }}>
               <Text style={[styles.verticalText, tab === 'albums' && styles.verticalTextActive]}>{t('albums')}</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.verticalNavButton} onPress={() => { setView('results'); setTab('artists'); }}>
+            <TouchableOpacity style={styles.verticalNavButton} onPress={() => { setSearchFilter('artist'); setHasSearched(false); setView('results'); setTab('artists'); }}>
               <Text style={[styles.verticalText, tab === 'artists' && styles.verticalTextActive]}>{t('artists')}</Text>
             </TouchableOpacity>
           </View>
@@ -1146,9 +1318,11 @@ return (
           
           {/* Botones de acción de la canción conectados a tus funciones reales */}
           <View style={{flexDirection: 'row', alignItems: 'center', gap: 14, marginRight: 5}}>
-            <TouchableOpacity onPress={() => handleDownload(item)}>
-              <Download color={isDownloaded ? accentColor : "#777"} size={18} />
-            </TouchableOpacity>
+            {item.downloadAllowed && item.downloadUrl ? (
+              <TouchableOpacity onPress={() => handleDownload(item)}>
+                <Download color={isDownloaded ? accentColor : "#777"} size={18} />
+              </TouchableOpacity>
+            ) : null}
             
             <TouchableOpacity onPress={() => toggleFavorite(item)}>
               <Heart color={isFav ? accentColor : "#777"} fill={isFav ? accentColor : "transparent"} size={18} />
@@ -1175,10 +1349,7 @@ return (
                         value={query}
                         onChangeText={setQuery}
                         returnKeyType="search"
-                        onSubmitEditing={() => {
-                          handleSearch();
-                          if(query.trim() && searchFilter === 'artist') setFavoriteArtist(query); 
-                        }}
+                        onSubmitEditing={handleSearch}
                       />
                       <TouchableOpacity
                         onPress={handleSearch}
@@ -1193,7 +1364,11 @@ return (
                     </View>
 
                     {/* FILTROS MULTI-OPCIÓN */}
-                    <View style={{flexDirection: 'row', justifyContent: 'flex-start', gap: 10, paddingHorizontal: 10}}>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={{ flexDirection: 'row', gap: 10, paddingHorizontal: 10 }}
+                    >
                       {['song', 'artist', 'album', 'playlist'].map((filterType) => (
                         <TouchableOpacity 
                           key={filterType} 
@@ -1209,7 +1384,7 @@ return (
                           </Text>
                         </TouchableOpacity>
                       ))}
-                    </View>
+                    </ScrollView>
                     {(searchFilter === 'song' || searchFilter === 'playlist') && (
                       <View style={{ marginHorizontal: 10, marginTop: 10, padding: 12, borderRadius: 10, backgroundColor: '#101012' }}>
                         {googleUser ? (
@@ -1224,7 +1399,7 @@ return (
                         ) : (
                           <TouchableOpacity onPress={handleGoogleSignIn}>
                             <Text style={{ color: accentColor, fontWeight: 'bold' }}>
-                              Conectar Google para buscar y reproducir música aquí
+                              Conectar Google para buscar canciones y playlists en YouTube Music
                             </Text>
                           </TouchableOpacity>
                         )}
@@ -1246,8 +1421,8 @@ return (
                         <Text style={[styles.sectionTitle, {marginLeft: 10}]}>Álbumes y Lanzamientos</Text>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{paddingLeft: 10, marginBottom: 20}}>
                           {artistAlbums.map((album) => (
-                            <TouchableOpacity key={album.id} style={styles.albumCard} onPress={() => goToCollection(album.name, 'Álbum')}>
-                              <Image source={{uri: album.image}} style={styles.albumArt} />
+                            <TouchableOpacity key={album.id} style={styles.albumCard} onPress={() => goToCollection(album, 'Álbum')}>
+                              <Image source={{uri: album.image || APP_LOGO_URI}} style={styles.albumArt} />
                               <Text style={styles.albumName} numberOfLines={1}>{album.name}</Text>
                               <Text style={styles.albumYear}>{album.year}</Text>
                             </TouchableOpacity>
@@ -1259,71 +1434,137 @@ return (
                     {songs.length > 0 && (
                       <View>
                         <Text style={[styles.sectionTitle, {marginLeft: 10}]}>
-                          {searchFilter === 'playlist' ? 'Playlists encontradas' : searchFilter === 'song' ? 'Canciones encontradas' : 'Canciones encontradas'}
+                          {searchFilter === 'playlist'
+                            ? 'Playlists encontradas'
+                            : searchFilter === 'artist'
+                              ? 'Artistas encontrados'
+                              : 'Canciones encontradas'}
                         </Text>
                         {songs.map((item, index) => (
                           <TouchableOpacity 
                             key={item.id} 
                             style={styles.songRow} 
                             onPress={() => {
+                              if (item.kind === 'artist') {
+                                goToArtistProfile(item);
+                                return;
+                              }
                               setCurrentCollectionSongs(songs); // Mantiene la cola de reproducción actualizada
                               togglePlay(item);
                             }}
                           >
                             <Text style={styles.songIndex}>{index + 1}</Text>
-                            <Image source={{uri: item.image}} style={styles.songArt} />
+                            <Image source={{uri: item.image || APP_LOGO_URI}} style={styles.songArt} />
                             <View style={{flex: 1, marginLeft: 15}}>
                               <Text style={[styles.songTitle, {color: currentSong?.id === item.id ? accentColor : 'white'}]} numberOfLines={1}>{item.title}</Text>
-                              <TouchableOpacity onPress={() => goToArtistProfile(item.artist)}>
-                                <Text style={styles.songArtist}>{item.artist}</Text>
-                              </TouchableOpacity>
+                              {item.kind === 'artist' ? (
+                                <Text style={styles.songArtist}>Artista</Text>
+                              ) : (
+                                <TouchableOpacity onPress={() => goToArtistProfile(item.artist)}>
+                                  <Text style={styles.songArtist}>{item.artist}</Text>
+                                </TouchableOpacity>
+                              )}
                             </View>
-                            <View style={{flexDirection: 'row', alignItems: 'center', gap: 14, marginRight: 5}}>
-                              {item.url ? <TouchableOpacity onPress={() => handleDownload(item)}><Download color={downloads[item.id]?.status === 'completed' ? accentColor : '#777'} size={18} /></TouchableOpacity> : null}
-                              <TouchableOpacity onPress={() => toggleFavorite(item)}><Heart color={favoriteSongs.includes(item.id) ? accentColor : '#777'} fill={favoriteSongs.includes(item.id) ? accentColor : 'transparent'} size={18} /></TouchableOpacity>
-                              <TouchableOpacity onPress={() => openAddToPlaylistModal(item)}><MoreVertical color="#777" size={18} /></TouchableOpacity>
-                            </View>
+                            {item.kind !== 'artist' && !item.youtubePlaylistId && (
+                              <View style={{flexDirection: 'row', alignItems: 'center', gap: 14, marginRight: 5}}>
+                                {item.downloadAllowed && item.downloadUrl ? <TouchableOpacity onPress={() => handleDownload(item)}><Download color={downloads[item.id]?.status === 'completed' ? accentColor : '#777'} size={18} /></TouchableOpacity> : null}
+                                <TouchableOpacity onPress={() => toggleFavorite(item)}><Heart color={favoriteSongs.includes(item.id) ? accentColor : '#777'} fill={favoriteSongs.includes(item.id) ? accentColor : 'transparent'} size={18} /></TouchableOpacity>
+                                <TouchableOpacity onPress={() => openAddToPlaylistModal(item)}><MoreVertical color="#777" size={18} /></TouchableOpacity>
+                              </View>
+                            )}
                           </TouchableOpacity>
                         ))}
                       </View>
                     )}
                   </View>
-                ) : (
-                  /* RECOMENDACIONES POR DEFECTO DEL HOME */
-                  view === 'results' && (
+                ) : view === 'results' && !hasSearched ? (
                     <View>
-                      <Text style={[styles.sectionTitle, { marginLeft: 10, marginTop: 10 }]}>Selecciones rápidas</Text>
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingLeft: 10, marginBottom: 20 }}>
-                        {recommendedPlaylists.map((p) => (
-                          <TouchableOpacity
-                            key={p.id}
-                            style={[{ backgroundColor: '#121212', width: 140, padding: 15, borderRadius: 15, marginRight: 15, borderLeftWidth: 4, borderLeftColor: p.color }]}
-                            onPress={() => goToCollection(p.name, 'Lista')}
-                          >
-                            <ListMusic color="white" size={24} style={{ marginBottom: 10 }} />
-                            <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 14 }} numberOfLines={1}>{p.name}</Text>
-                            <Text style={{ color: '#666', fontSize: 11, marginTop: 4 }}>{p.tracks}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </ScrollView>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 10, marginTop: 10 }}>
+                        <View>
+                          <Text style={styles.sectionTitle}>Top canciones · España</Text>
+                          <Text style={{ color: '#666', fontSize: 11, marginTop: 2 }}>
+                            Apple Music · actualizado {chartsUpdatedAt ? chartsUpdatedAt.toLocaleTimeString() : 'al abrir la app'}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          onPress={loadHomeCharts}
+                          disabled={isLoadingCharts}
+                          accessibilityLabel="Actualizar tops musicales"
+                          style={{ padding: 8 }}
+                        >
+                          {isLoadingCharts
+                            ? <ActivityIndicator color={accentColor} size="small" />
+                            : <RotateCcw color={accentColor} size={20} />}
+                        </TouchableOpacity>
+                      </View>
+                      {!!chartError && (
+                        <Text style={{ color: '#aaa', marginHorizontal: 12, marginTop: 8 }}>{chartError}</Text>
+                      )}
+                      {isLoadingCharts && topSongs.length === 0 && (
+                        <ActivityIndicator color={accentColor} style={{ margin: 20 }} />
+                      )}
+                      {!isLoadingCharts && topSongs.length === 0 && (
+                        <TouchableOpacity onPress={loadHomeCharts} style={{ marginHorizontal: 12, marginVertical: 16 }}>
+                          <Text style={{ color: accentColor }}>No se pudo cargar el top. Toca para reintentar.</Text>
+                        </TouchableOpacity>
+                      )}
+                      {topSongs.slice(0, Number(initialCount) || 10).map((song, index) => (
+                        <TouchableOpacity
+                          key={song.id}
+                          style={styles.songRow}
+                          onPress={async () => {
+                            setLoadingChartSongId(song.id);
+                            try {
+                              await playTrack(song);
+                            } finally {
+                              setLoadingChartSongId(null);
+                            }
+                          }}
+                          disabled={loadingChartSongId === song.id}
+                        >
+                          <Text style={styles.songIndex}>{index + 1}</Text>
+                          <Image source={{ uri: song.image || APP_LOGO_URI }} style={styles.songArt} />
+                          <View style={{ flex: 1, marginLeft: 15 }}>
+                            <Text style={styles.songTitle} numberOfLines={1}>{song.title}</Text>
+                            <TouchableOpacity onPress={() => goToArtistProfile({ title: song.artist, artistId: song.artistId })}>
+                              <Text style={styles.songArtist} numberOfLines={1}>{song.artist}</Text>
+                            </TouchableOpacity>
+                          </View>
+                          {loadingChartSongId === song.id
+                            ? <ActivityIndicator color={accentColor} />
+                            : <Play color={accentColor} size={20} fill={accentColor} />}
+                        </TouchableOpacity>
+                      ))}
 
-                      <Text style={[styles.sectionTitle, { marginLeft: 10 }]}>Álbumes recomendados</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 10, marginTop: 24 }}>
+                        <Text style={styles.sectionTitle}>Top álbumes · España</Text>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setSearchFilter('playlist');
+                            setQuery('');
+                            setHasSearched(false);
+                            setSearchMessage('');
+                          }}
+                          style={{ padding: 8 }}
+                        >
+                          <Text style={{ color: accentColor, fontWeight: 'bold', fontSize: 12 }}>Buscar playlists</Text>
+                        </TouchableOpacity>
+                      </View>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingLeft: 10, marginBottom: 20 }}>
-                        {homeAlbums.map((album) => (
+                        {topAlbums.map((album) => (
                           <TouchableOpacity
                             key={album.id}
                             style={{ width: 140, marginRight: 15 }}
-                            onPress={() => goToCollection(album.name, 'Álbum')}
+                            onPress={() => goToCollection(album, 'Álbum')}
                           >
-                            <Image source={{ uri: album.image }} style={{ width: 140, height: 140, borderRadius: 10 }} />
+                            <Image source={{ uri: album.image || APP_LOGO_URI }} style={{ width: 140, height: 140, borderRadius: 10 }} />
                             <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 14, marginTop: 8 }} numberOfLines={1}>{album.name}</Text>
                             <Text style={{ color: '#666', fontSize: 12, marginTop: 2 }} numberOfLines={1}>{album.artist}</Text>
                           </TouchableOpacity>
                         ))}
                       </ScrollView>
                     </View>
-                  )
-                )}
+                ) : null}
               </>
             )}
           </ScrollView>
